@@ -1,0 +1,62 @@
+name: Derle ve test et
+
+# Her değişiklikte: çekirdek testleri (Linux, ucuz) ve uygulamanın iPhone
+# simülatörü için derlenmesi (Mac). Mac dakikaları 10 kat sayıldığı için
+# yalnız kod değişince çalışır.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+
+concurrency:
+  group: derle-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cekirdek:
+    name: Çekirdek testleri
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testler
+        working-directory: Cekirdek
+        run: swift test
+
+  uygulama:
+    name: Uygulamayı derle
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode sürümü
+        run: xcodebuild -version
+      - name: Çekirdek testleri (Mac, CryptoKit ile)
+        working-directory: Cekirdek
+        run: swift test 2>&1 | tail -n 5
+      - name: Projeyi üret
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Derle (iPhone simülatörü)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project VizeMia.xcodeproj -scheme VizeMia -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/derived \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never used)|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+      - name: Derleme kaydı
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 7

@@ -1,0 +1,83 @@
+name: TestFlight'a gönder
+
+# Elle çalıştırılır: Actions → TestFlight'a gönder → Run workflow.
+# Uygulamayı imzalayıp App Store Connect'e yükler; birkaç dakika sonra
+# telefondaki TestFlight uygulamasında görünür.
+#
+# Gereken gizli ayarlar (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID      App Store Connect API anahtarının kimliği (10 karakter)
+#   ASC_ISSUER_ID   Issuer ID (Users and Access → Integrations sayfasının üstünde)
+#   ASC_KEY_P8      İndirilen AuthKey_XXXX.p8 dosyasının içeriği (tamamı)
+#   APPLE_TEAM_ID   Apple Developer ekip kimliği (10 karakter; Membership sayfasında)
+# Kurulum adımları: README → "TestFlight kurulumu".
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: İmzala ve yükle
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gizli ayarlar tamam mı
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          for ad in ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID ASC_KEY_P8; do
+            if [ -z "${!ad}" ]; then echo "::error::$ad gizli ayarı eksik (README → TestFlight kurulumu)"; exit 1; fi
+          done
+          mkdir -p "$RUNNER_TEMP/anahtar"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/anahtar/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$RUNNER_TEMP/anahtar/AuthKey_${ASC_KEY_ID}.p8"
+      - name: Projeyi üret
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Arşivle
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -project VizeMia.xcodeproj -scheme VizeMia -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/VizeMia.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/anahtar/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" 2>&1 | tee arsiv.log | grep -E "error:|\*\* ARCHIVE" || true
+          grep -q "\*\* ARCHIVE SUCCEEDED \*\*" arsiv.log
+      - name: App Store Connect'e yükle
+        run: |
+          set -o pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/VizeMia.xcarchive \
+            -exportOptionsPlist Yapi/ExportOptions.plist \
+            -exportPath build/cikti \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/anahtar/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" 2>&1 | tee yukleme.log | grep -E "error:|\*\* EXPORT|Upload" || true
+          grep -q "\*\* EXPORT SUCCEEDED \*\*" yukleme.log
+      - name: Anahtarı sil
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/anahtar"
+      - name: Kayıtlar
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-log
+          path: |
+            arsiv.log
+            yukleme.log
+          retention-days: 7

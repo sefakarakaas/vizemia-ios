@@ -43,6 +43,13 @@ public enum Tr {
         return iso(yil: p.year ?? 0, ay: p.month ?? 0, gun: p.day ?? 0)
     }
 
+    /// Takvimden seçilen günü "2026-11-20" yapar. Tarih seçici cihazın
+    /// takvimiyle çalışır; kullanıcının ekranda gördüğü gün yazılır.
+    public static func isoGun(_ d: Date, takvim: Calendar = .current) -> String {
+        let p = takvim.dateComponents([.year, .month, .day], from: d)
+        return iso(yil: p.year ?? 0, ay: p.month ?? 0, gun: p.day ?? 0)
+    }
+
     static func iso(yil: Int, ay: Int, gun: Int) -> String {
         "\(dort(yil))-\(iki(ay))-\(iki(gun))"
     }
