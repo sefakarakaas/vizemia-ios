@@ -1,0 +1,20 @@
+# Swift / Xcode
+.build/
+.swiftpm/
+DerivedData/
+build/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Anahtar dosyaları asla depoya eklenmez
+*.p8
+*.p12
+*.mobileprovision
+.env
+
+.DS_Store
