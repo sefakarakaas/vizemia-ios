@@ -6,7 +6,8 @@ import Foundation
 public enum Hedef: Equatable {
     case anaSayfa
     case basvuru(ulke: String)
-    case takip
+    /// `kod`: bağlantıyla gelen takip kodu ("/takip?kod=2026-091234"); yoksa boş.
+    case takip(kod: String)
     case destek(kod: String)
     case harclar
     case sss
@@ -35,7 +36,7 @@ public enum Hedef: Equatable {
             switch yol {
             case "/", "": return .anaSayfa
             case "/basvuru", "/pasaport": return .basvuru(ulke: deger("ulke"))
-            case "/takip": return .takip
+            case "/takip": return .takip(kod: deger("kod"))
             case "/destek": return .destek(kod: deger("kod"))
             case "/harclar": return .harclar
             case "/sss": return .sss

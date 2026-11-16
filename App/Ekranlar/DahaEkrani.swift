@@ -173,7 +173,7 @@ struct UlkelerEkrani: View {
                     .listRowBackground(Color.clear)
             }
         }
-        .searchable(text: $arama, prompt: "Ülke ara")
+        .searchable(text: $arama, placement: .navigationBarDrawer(displayMode: .always), prompt: "Ülke ara")
         .navigationTitle("Ülkeler")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -241,10 +241,11 @@ struct DestekEkrani: View {
                     }
                     VStack(spacing: 16) {
                         Alan(etiket: "Adınız *") {
-                            TextField("", text: $form.ad).textContentType(.name).kutu()
+                            TextField("", text: $form.ad).accessibilityLabel("Adınız").textContentType(.name).kutu()
                         }
                         Alan(etiket: "E-posta *") {
                             TextField("", text: $form.eposta)
+                                .accessibilityLabel("E-posta")
                                 .textContentType(.emailAddress)
                                 .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
@@ -252,16 +253,16 @@ struct DestekEkrani: View {
                                 .kutu()
                         }
                         Alan(etiket: "Telefon", istegeBagli: true) {
-                            TextField("", text: $form.telefon).textContentType(.telephoneNumber).keyboardType(.phonePad).kutu()
+                            TextField("", text: $form.telefon).accessibilityLabel("Telefon").textContentType(.telephoneNumber).keyboardType(.phonePad).kutu()
                         }
                         Alan(etiket: "Takip kodu", istegeBagli: true) {
                             TextField("2026-091234", text: $form.takipKodu).keyboardType(.numbersAndPunctuation).kutu()
                         }
                         Alan(etiket: "Konu *") {
-                            TextField("", text: $form.konu).kutu()
+                            TextField("", text: $form.konu).accessibilityLabel("Konu").kutu()
                         }
                         Alan(etiket: "Mesajınız *") {
-                            TextField("", text: $form.mesaj, axis: .vertical).lineLimit(5...10).kutu()
+                            TextField("", text: $form.mesaj, axis: .vertical).accessibilityLabel("Mesajınız").lineLimit(5...10).kutu()
                         }
                         IsaretKutusu(secili: $form.onay, metin: "Bu talebi yanıtlamak amacıyla ad, e-posta ve telefon bilgilerimin işlenmesini kabul ediyorum. Talebim kapatıldıktan sonra saklama süresi sonunda silinir. *")
                         if let h = hata { HataMetni(metin: h) }

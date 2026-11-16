@@ -14,9 +14,13 @@ struct TakipEkrani: View {
     @State private var yukleniyor = false
     @State private var kayit: TakipKaydi?
     @State private var sorgulananKod = ""
+    /// Ekrandaki kaydın Firestore kimliği (sessiz yenileme için).
+    @State private var sonKimlik: String?
     @State private var sinir = DenemeSiniri()
     @State private var ilkAcilis = true
+    @State private var baglantidanGeldi = false
     @FocusState private var odak: Kutu?
+    @Environment(\.scenePhase) private var sahne
 
     private enum Kutu { case kod, pasaport }
 
@@ -50,14 +54,21 @@ struct TakipEkrani: View {
         .ekranZemini()
         .navigationTitle("Takip")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { koduUygula() }
+        .onChange(of: gezinti.takipKodu) { _, _ in koduUygula() }
         .task {
             // Daha önce "hatırla" denildiyse bilgiler dolu gelir ve durum kendiliğinden sorgulanır.
+            // Bağlantıyla başka bir kod geldiyse o öncelikli: kayıtlı bilgi üstüne yazılmaz.
             guard ilkAcilis else { return }
             ilkAcilis = false
-            if let k = Kasa.oku(), let p = Takip.kodAyir(k.kod) {
+            if !baglantidanGeldi, let k = Kasa.oku(), let p = Takip.kodAyir(k.kod) {
                 yil = p.yil; kalan = p.kalan; pasaport = k.pasaport; hatirla = true
                 await sorgula(otomatik: true)
             }
+        }
+        .onChange(of: sahne) { _, yeni in
+            // Uygulama yeniden öne gelince ekrandaki durum sessizce tazelenir.
+            if yeni == .active { Task { await tazele() } }
         }
     }
 
@@ -80,6 +91,8 @@ struct TakipEkrani: View {
                         .keyboardType(.numberPad)
                         .font(.body.monospacedDigit())
                         .focused($odak, equals: .kod)
+                        .accessibilityIdentifier("takip-kod")
+                        .accessibilityLabel("Takip kodunun son 6 rakamı")
                         .kutu()
                         .onChange(of: kalan) { _, yeni in
                             // Tam kod yapıştırılırsa iki kutuya bölünür.
@@ -103,6 +116,7 @@ struct TakipEkrani: View {
                     .focused($odak, equals: .pasaport)
                     .submitLabel(.search)
                     .onSubmit { Task { await sorgula() } }
+                    .accessibilityIdentifier("takip-pasaport")
                     .kutu()
                     .onChange(of: pasaport) { _, yeni in
                         let buyuk = yeni.uppercased()
@@ -132,9 +146,31 @@ struct TakipEkrani: View {
         .kart()
     }
 
-    private func sorgula(otomatik: Bool = false) async {
+    /// Bağlantıyla gelen takip kodu ("/takip?kod=2026-091234") kutulara yazılır;
+    /// müşteri yalnız pasaport numarasını girer.
+    private func koduUygula() {
+        let k = gezinti.takipKodu
+        guard !k.isEmpty else { return }
+        gezinti.takipKodu = ""
+        guard let p = Takip.kodAyir(k) else { return }
+        baglantidanGeldi = true
+        if "\(p.yil)-\(p.kalan)" != kod {
+            pasaport = ""
+            kayit = nil
+            sonKimlik = nil
+            hatirla = false
+        }
+        yil = p.yil; kalan = p.kalan
         hata = nil
-        odak = nil
+        odak = .pasaport
+    }
+
+    private func sorgula(otomatik: Bool = false) async {
+        // Kendiliğinden sorguda (kayıtlı bilgiyle açılış) klavyeye ve hata satırına dokunulmaz.
+        if !otomatik {
+            hata = nil
+            odak = nil
+        }
         if let h = Takip.hata(kod: kod, pasaport: pasaport) {
             if !otomatik { hata = h }
             return
@@ -145,20 +181,43 @@ struct TakipEkrani: View {
         }
         yukleniyor = true
         defer { yukleniyor = false }
+        let sorguKodu = kod
         let temiz = Takip.pasaportTemizle(pasaport)
+        let kimlik = Takip.kimlik(kod: sorguKodu, pasaport: temiz)
         do {
-            guard let belge = try await FirestoreIstemci().belge("takip/\(Takip.kimlik(kod: kod, pasaport: temiz))") else {
+            guard let belge = try await FirestoreIstemci().belge("takip/\(kimlik)") else {
                 kayit = nil
-                hata = "Bu bilgilerle eşleşen bir başvuru bulunamadı. Takip kodunu ve pasaport numaranızı kontrol edin."
+                sonKimlik = nil
+                if !otomatik {
+                    hata = "Bu bilgilerle eşleşen bir başvuru bulunamadı. Takip kodunu ve pasaport numaranızı kontrol edin."
+                }
                 return
             }
             withAnimation { kayit = TakipKaydi(belge: belge) }
-            sorgulananKod = kod
-            if hatirla { Kasa.yaz(Kasa.Kayit(kod: kod, pasaport: temiz)) }
+            sorgulananKod = sorguKodu
+            sonKimlik = kimlik
+            if hatirla { Kasa.yaz(Kasa.Kayit(kod: sorguKodu, pasaport: temiz)) }
         } catch {
-            if !otomatik || kayit == nil {
+            if !otomatik {
                 hata = "Şu anda sorgulama yapılamıyor. Lütfen daha sonra tekrar deneyin."
             }
+        }
+    }
+
+    /// Ekrandaki kaydı sessizce yeniler (uygulama yeniden öne gelince). Kutulara
+    /// o sırada başka bir şey yazılıyor olabilir; son başarılı sorgu yinelenir.
+    private func tazele() async {
+        guard let kimlik = sonKimlik, kayit != nil, !yukleniyor else { return }
+        do {
+            if let belge = try await FirestoreIstemci().belge("takip/\(kimlik)") {
+                withAnimation { kayit = TakipKaydi(belge: belge) }
+            } else {
+                // Kayıt artık yok (saklama süresi dolunca silinir).
+                kayit = nil
+                sonKimlik = nil
+            }
+        } catch {
+            // Bağlantı yok: ekrandaki bilgi kalır.
         }
     }
 }

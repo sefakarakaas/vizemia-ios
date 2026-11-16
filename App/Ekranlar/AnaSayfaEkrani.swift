@@ -28,26 +28,37 @@ struct AnaSayfaEkrani: View {
         }
         .ekranZemini()
         .refreshable { await icerik.yenile() }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Image("Logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 30)
-                    .accessibilityLabel("VizeMia")
+        // Sitenin üst şeridi: solda logo, sağda "Ara". Sistemin gezinme çubuğu
+        // logoyu küçük bir düğmeye sıkıştırdığı için ana sayfada kendi şeridimiz var.
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) { ustSerit }
+    }
+
+    private var ustSerit: some View {
+        HStack(spacing: 12) {
+            Image("Logo")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 34)
+                .accessibilityLabel("VizeMia")
+                .accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button {
+                gezinti.ara(icerik.iletisim, mesai: icerik.mesai)
+            } label: {
+                Label("Ara", systemImage: "phone.fill")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Tema.lacivert)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Tema.soluk, in: Capsule())
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    gezinti.ara(icerik.iletisim, mesai: icerik.mesai)
-                } label: {
-                    Image(systemName: "phone.fill")
-                }
-                .accessibilityLabel("VizeMia'yı arayın: \(icerik.iletisim.telefonGorunen)")
-            }
+            .accessibilityLabel("VizeMia'yı arayın: \(icerik.iletisim.telefonGorunen)")
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(Tema.zemin, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .padding(.horizontal, Tema.bosluk)
+        .padding(.vertical, 8)
+        .background { Tema.zemin.ignoresSafeArea(edges: .top) }
+        .overlay(alignment: .bottom) { Rectangle().fill(Tema.soluk).frame(height: 1) }
     }
 
     // MARK: - Bölümler
@@ -58,7 +69,7 @@ struct AnaSayfaEkrani: View {
                 gezinti.ac(.basvuru(ulke: ""))
             }
             HizliKutu(baslik: "Başvuru takibi", alt: "Kod ve pasaportla", simge: "doc.text.magnifyingglass") {
-                gezinti.ac(.takip)
+                gezinti.ac(.takip(kod: ""))
             }
             HizliKutu(baslik: "Harç & Kur", alt: "Güncel tutarlar", simge: "eurosign.circle.fill") {
                 gezinti.ac(.harclar)

@@ -182,13 +182,16 @@ struct IsaretKutusu: View {
     var etkin = true
 
     var body: some View {
+        // Kullanılamayan kutu işaretsiz görünür: adresi olmayan e-posta kanalını
+        // seçili göstermek "seçtim ama gelmedi" demek.
+        let isaretli = secili && etkin
         Button {
             secili.toggle()
         } label: {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: secili ? "checkmark.square.fill" : "square")
+                Image(systemName: isaretli ? "checkmark.square.fill" : "square")
                     .font(.title3)
-                    .foregroundStyle(secili ? Tema.lacivert : Tema.silik)
+                    .foregroundStyle(isaretli ? Tema.lacivert : Tema.silik)
                 Text(metin)
                     .font(.footnote)
                     .foregroundStyle(Tema.govde)
@@ -200,7 +203,7 @@ struct IsaretKutusu: View {
         .buttonStyle(.plain)
         .disabled(!etkin)
         .opacity(etkin ? 1 : 0.45)
-        .accessibilityAddTraits(secili ? .isSelected : [])
+        .accessibilityAddTraits(isaretli ? .isSelected : [])
     }
 }
 

@@ -1,8 +1,11 @@
 import XCTest
 
-/// Uygulamayı simülatörde açar, sekmeleri gezer ve ekran görüntüsü alır.
-/// Mac olmadan ekranların nasıl göründüğünü görmek için: Actions →
-/// "Ekran görüntüleri" işi bunları indirilebilir dosya olarak verir.
+/// Uygulamayı simülatörde açar, sekmeleri gezer, birkaç akışı dener ve ekran
+/// görüntüsü alır. Mac olmadan ekranların nasıl göründüğünü görmek için:
+/// Actions → "Ekran görüntüleri" işi bunları indirilebilir dosya olarak verir.
+///
+/// CANLI VERİYE YAZMAZ: başvuru formu bilerek eksik bırakılır (vize türü ve
+/// onay seçilmez), gönderim doğrulamada durur. Takip sorgusu yalnız okur.
 final class EkranGoruntuleri: XCTestCase {
     private var app: XCUIApplication!
     private var sira = 0
@@ -18,60 +21,74 @@ final class EkranGoruntuleri: XCTestCase {
         bekle(3)   // vitrin görseli insin
         cek("ana-sayfa")
         app.swipeUp(); cek("ana-sayfa-2")
-        app.swipeUp(); cek("ana-sayfa-3")
-        app.swipeUp(); cek("ana-sayfa-4")
-        app.swipeUp(); cek("ana-sayfa-5")
 
+        // --- Takip: olmayan kayıt sorgulanır; uygulama Firestore'dan cevap alıp "bulunamadı" demeli.
         sekme("Takip")
-        cek("takip")
+        yaz("takip-kod", "091234")
+        yaz("takip-pasaport", "u12345678")
+        app.buttons["Durumu sorgula"].tap()
+        XCTAssertTrue(metin("bulunamadı").waitForExistence(timeout: 25), "Takip sorgusu cevap vermedi")
+        XCTAssertEqual(app.textFields["takip-pasaport"].value as? String, "U12345678", "Pasaport numarası büyük harfe çevrilmedi")
+        cek("takip-bulunamadi")
 
+        // --- Başvur: harf kuralı, ülke seçici, saat seçici, doğrulama hatası.
         sekme("Başvur")
-        cek("basvuru")
-        app.swipeUp(); cek("basvuru-2")
-        app.swipeUp(); cek("basvuru-3")
-        app.swipeUp(); cek("basvuru-4")
+        yaz("basvuru-ad", "ayşe")
+        yaz("basvuru-soyad", "öztürk")
+        XCTAssertEqual(app.textFields["basvuru-ad"].value as? String, "AYSE", "Ad Latin büyük harfe çevrilmedi")
+        XCTAssertEqual(app.textFields["basvuru-soyad"].value as? String, "OZTURK", "Soyad Latin büyük harfe çevrilmedi")
+        yaz("basvuru-telefon", "05499072523")
+        cek("basvuru-dolu")
+
+        app.swipeUp()   // klavye kapanır, ülke alanı görünür
+        let ulke = app.buttons["basvuru-ulke"]
+        if ulke.waitForExistence(timeout: 8) {
+            ulke.tap()
+            bekle(1)
+            cek("ulke-secici")
+            let fransa = dugme("Fransa")
+            if fransa.waitForExistence(timeout: 5) { fransa.tap() } else { XCTFail("Ülke listesinde Fransa yok") }
+            bekle(1)
+        } else {
+            XCTFail("Ülke düğmesi yok")
+        }
+
+        let saat = dugme("Saat seçeyim")
+        if saat.waitForExistence(timeout: 5) {
+            saat.tap()   // mesai içindeyse iki seçenek çıkar; dışındaysa seçici zaten açıktır
+        }
+        bekle(1)
+        cek("basvuru-saat")
+        app.swipeUp(); cek("basvuru-saat-2")
+        app.swipeUp(); app.swipeUp()
+        let gonder = app.buttons["Beni arayın"]
+        if gonder.waitForExistence(timeout: 5) {
+            gonder.tap()   // vize türü seçilmedi: doğrulama durdurur, hiçbir şey gönderilmez
+            XCTAssertTrue(metin("Vize türünü seçin").waitForExistence(timeout: 5), "Doğrulama hatası görünmedi")
+            bekle(1)
+            cek("basvuru-hata")
+        } else {
+            XCTFail("Gönder düğmesi yok")
+        }
 
         sekme("Harç & Kur")
         cek("harclar")
-        app.swipeUp(); cek("harclar-2")
 
         sekme("Daha")
-        cek("daha")
+        dokun("Vize gereken ülkeler")
+        cek("ulkeler")
+        geri()
 
         dokun("Ülke rehberleri")
         bekle(2)
-        cek("rehberler")
-        let almanya = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Almanya")).firstMatch
-        if almanya.waitForExistence(timeout: 5) {
-            almanya.tap()
+        let schengen = dugme("Schengen")
+        if schengen.waitForExistence(timeout: 5) {
+            schengen.tap()
             bekle(2)
-            cek("rehber-almanya")
-            app.swipeUp(); cek("rehber-almanya-2")
-            app.swipeUp(); cek("rehber-almanya-3")
-            geri()
+            cek("rehber-schengen")
+            app.swipeUp(); cek("rehber-schengen-2")
+            app.swipeUp(); cek("rehber-schengen-3")
         }
-        geri()
-
-        dokun("Blog")
-        bekle(1)
-        cek("blog")
-        geri()
-
-        dokun("Sıkça sorulan sorular")
-        cek("sss")
-        geri()
-
-        dokun("Destek formu")
-        cek("destek")
-        geri()
-
-        dokun("İletişim ve harita")
-        bekle(3)
-        cek("iletisim")
-        geri()
-
-        dokun("Vize gereken ülkeler")
-        cek("ulkeler")
     }
 
     // MARK: - Yardımcılar
@@ -80,7 +97,26 @@ final class EkranGoruntuleri: XCTestCase {
         let d = app.tabBars.buttons[ad]
         XCTAssertTrue(d.waitForExistence(timeout: 10), "\(ad) sekmesi yok")
         d.tap()
-        bekle(1)
+    }
+
+    private func yaz(_ kimlik: String, _ metin: String) {
+        let kutu = app.textFields[kimlik]
+        XCTAssertTrue(kutu.waitForExistence(timeout: 10), "\(kimlik) kutusu yok")
+        kutu.tap()
+        kutu.typeText(metin)
+    }
+
+    /// Etiketinde bu metin geçen herhangi bir öge (hata satırı, bilgi metni).
+    private func metin(_ parca: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] %@", parca)).firstMatch
+    }
+
+    /// Etiketinde (ya da içindeki yazıda) bu metin geçen düğme.
+    private func dugme(_ parca: String) -> XCUIElement {
+        let p = NSPredicate(format: "label CONTAINS[c] %@", parca)
+        let kendisi = app.buttons.matching(p).firstMatch
+        if kendisi.waitForExistence(timeout: 4) { return kendisi }
+        return app.buttons.containing(p).firstMatch
     }
 
     private func dokun(_ ad: String) {
@@ -92,13 +128,11 @@ final class EkranGoruntuleri: XCTestCase {
             XCTAssertTrue(m.waitForExistence(timeout: 3), "\(ad) bulunamadı")
             m.tap()
         }
-        bekle(1)
     }
 
     private func geri() {
         let d = app.navigationBars.buttons.firstMatch
-        if d.exists { d.tap() }
-        bekle(1)
+        if d.waitForExistence(timeout: 5) { d.tap() }
     }
 
     private func bekle(_ saniye: TimeInterval) {

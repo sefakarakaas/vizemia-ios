@@ -39,7 +39,12 @@ jobs:
         run: xcodebuild -version
       - name: Çekirdek testleri (Mac, CryptoKit ile)
         working-directory: Cekirdek
-        run: swift test 2>&1 | tail -n 5
+        run: |
+          # Çıktı uzun; yalnız özet ve hatalar gösterilir. Sonucu swift test belirler.
+          kod=0
+          swift test > test.log 2>&1 || kod=$?
+          grep -E "error:|failed|Executed [0-9]+ tests" test.log | tail -n 20 || true
+          exit $kod
       - name: Projeyi üret
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen

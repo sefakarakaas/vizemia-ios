@@ -66,17 +66,33 @@ struct BasvuruEkrani: View {
             }
         }
         .onAppear {
+            // Sekmeye her girişte yeniden bakılır: uygulama açık kalmışken mesai
+            // bittiyse "hemen arayın" artık tutamayacağımız bir söz olur.
+            let acik = icerik.mesai.acikMi()
             if !hazir {
                 hazir = true
-                acikti = icerik.mesai.acikMi()
-                arama = AramaSecimi(mod: acikti ? .hemen : .saat, gun: icerik.mesai.uygunGunler().first ?? "")
+                arama = AramaSecimi(mod: acik ? .hemen : .saat, gun: icerik.mesai.uygunGunler().first ?? "")
+            } else if !acik && arama.mod == .hemen {
+                arama.mod = .saat
             }
+            acikti = acik
             ulkeyiUygula()
         }
         .onChange(of: gezinti.basvuruUlke) { _, _ in ulkeyiUygula() }
     }
 
     // MARK: - Bölümler
+
+    /// Ekran okuyucu için: seçim kutusunun ne olduğu ve seçili değer.
+    private var ulkeEtiketi: String {
+        let ad = icerik.akis.ulke(form.ulke)?.ad ?? "seçilmedi"
+        return "Gidilecek ülke: " + ad
+    }
+
+    private var vizeEtiketi: String {
+        let ad = VizeTuru.hepsi.first(where: { $0.id == form.vizeTuru })?.ad ?? "seçilmedi"
+        return "Vize türü: " + ad
+    }
 
     private var baslik: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -90,6 +106,8 @@ struct BasvuruEkrani: View {
         Bolum(baslik: "1. Siz") {
             Alan(etiket: "Adınız *") {
                 TextField("", text: $form.ad)
+                    .accessibilityIdentifier("basvuru-ad")
+                    .accessibilityLabel("Adınız")
                     .textContentType(.givenName)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -102,6 +120,8 @@ struct BasvuruEkrani: View {
             .id(BasvuruAlani.ad)
             Alan(etiket: "Soyadınız *", yardim: "Pasaportunuzda yazdığı gibi, Latin harfleriyle.") {
                 TextField("", text: $form.soyad)
+                    .accessibilityIdentifier("basvuru-soyad")
+                    .accessibilityLabel("Soyadınız")
                     .textContentType(.familyName)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -114,6 +134,8 @@ struct BasvuruEkrani: View {
             .id(BasvuruAlani.soyad)
             Alan(etiket: "Telefon *") {
                 TextField("05xx xxx xx xx", text: $form.telefon)
+                    .accessibilityIdentifier("basvuru-telefon")
+                    .accessibilityLabel("Telefon")
                     .textContentType(.telephoneNumber)
                     .keyboardType(.phonePad)
                     .kutu()
@@ -121,6 +143,8 @@ struct BasvuruEkrani: View {
             .id(BasvuruAlani.telefon)
             Alan(etiket: "E-posta", istegeBagli: true) {
                 TextField("", text: $form.eposta)
+                    .accessibilityIdentifier("basvuru-eposta")
+                    .accessibilityLabel("E-posta")
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -150,6 +174,8 @@ struct BasvuruEkrani: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("basvuru-ulke")
+                .accessibilityLabel(Text(ulkeEtiketi))
             }
             .id(BasvuruAlani.ulke)
 
@@ -171,6 +197,8 @@ struct BasvuruEkrani: View {
                     .kutu()
                     .contentShape(Rectangle())
                 }
+                .accessibilityIdentifier("basvuru-vize")
+                .accessibilityLabel(Text(vizeEtiketi))
             }
             .id(BasvuruAlani.vizeTuru)
 
@@ -261,6 +289,7 @@ struct BasvuruEkrani: View {
                 .id(BasvuruAlani.pasaportNo)
                 Alan(etiket: "T.C. kimlik numarası") {
                     TextField("", text: $form.tckn)
+                        .accessibilityLabel("T.C. kimlik numarası")
                         .keyboardType(.numberPad)
                         .font(.body.monospacedDigit())
                         .kutu()
@@ -305,7 +334,7 @@ struct BasvuruEkrani: View {
             Text("\(ne).").font(.body).foregroundStyle(Tema.olumluKoyu)
             Text("Görüşmede size takip kodunuzu vereceğiz; o kodla Takip sekmesinden durumu izleyebilirsiniz.")
                 .font(.subheadline).foregroundStyle(Tema.govde)
-            Button("Başvuru takibine git") { gezinti.ac(.takip) }
+            Button("Başvuru takibine git") { gezinti.ac(.takip(kod: "")) }
                 .buttonStyle(AnaDugme())
                 .padding(.top, 6)
             Button("Yeni talep oluştur") {

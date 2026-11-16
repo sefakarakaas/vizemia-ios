@@ -156,11 +156,11 @@ struct HarclarEkrani: View {
             }
             if h.id == "schengen" {
                 NavigationLink(value: Rota.ulkeler) {
-                    Text("Ülkeyi seçin, ücretsiz ön değerlendirme alın")
+                    Text("Schengen ülkesini seçin")
                 }
                 .buttonStyle(IkincilDugme())
             } else {
-                Button("\(h.ad) için ücretsiz ön değerlendirme al") {
+                Button("Ücretsiz ön değerlendirme al") {
                     gezinti.ac(.basvuru(ulke: basvuruUlkesi[h.id] ?? ""))
                 }
                 .buttonStyle(IkincilDugme())

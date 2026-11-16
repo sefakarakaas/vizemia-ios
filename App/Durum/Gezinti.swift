@@ -30,6 +30,8 @@ final class Gezinti {
     var yollar: [Sekme: [Rota]] = [:]
     /// Başvuru formunda seçili gelecek ülke kimliği ("almanya").
     var basvuruUlke: String = ""
+    /// Bağlantıyla gelen takip kodu ("2026-091234"); takip ekranı alıp boşaltır.
+    var takipKodu: String = ""
     /// Uygulama içi tarayıcıda açılan adres.
     var web: WebAdresi?
     /// Mesai dışında "Ara"ya basılınca gösterilen pencere.
@@ -52,7 +54,8 @@ final class Gezinti {
             if !ulke.isEmpty { basvuruUlke = ulke }
             yollar[.basvuru] = []
             sekme = .basvuru
-        case .takip:
+        case .takip(let kod):
+            if !kod.isEmpty { takipKodu = kod }
             yollar[.takip] = []
             sekme = .takip
         case .harclar:
