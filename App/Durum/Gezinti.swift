@@ -15,6 +15,8 @@ enum Rota: Hashable {
     case sss
     case destek(kod: String)
     case iletisim
+    /// Hatırlanan müşteri varken başka bir başvuruyu sorgulama ekranı.
+    case takipSorgu
 }
 
 struct WebAdresi: Identifiable {

@@ -42,11 +42,19 @@ public enum Takip {
 }
 
 /// Müşterinin gördüğü durum (Firestore `takip/{kimlik}`).
-public struct TakipKaydi: Equatable {
-    public struct Not: Equatable, Identifiable {
+/// Codable: "Beni unutma" diyen müşterinin son gördüğü durum cihazda saklanır
+/// (açılışta karşılama, çevrimdışı gösterim, değişiklik bildirimi).
+public struct TakipKaydi: Equatable, Codable {
+    public struct Not: Equatable, Identifiable, Codable {
         public var id: Int
         public var metin: String
         public var tarih: Date?
+
+        public init(id: Int, metin: String, tarih: Date? = nil) {
+            self.id = id
+            self.metin = metin
+            self.tarih = tarih
+        }
     }
 
     public var ulke: String
@@ -60,6 +68,13 @@ public struct TakipKaydi: Equatable {
     public var asamalar: [String]
     public var asama: Int?
     public var guncelleme: Date?
+
+    public init(ulke: String, ad: String, durum: String, aciklama: String = "", renk: String? = nil, bitti: Bool = false,
+                notlar: [Not] = [], asamalar: [String] = [], asama: Int? = nil, guncelleme: Date? = nil) {
+        self.ulke = ulke; self.ad = ad; self.durum = durum; self.aciklama = aciklama; self.renk = renk
+        self.bitti = bitti; self.notlar = notlar; self.asamalar = asamalar; self.asama = asama
+        self.guncelleme = guncelleme
+    }
 
     public init(belge: [String: FSDeger]) {
         ulke = belge["countryName"]?.metinDegeri ?? ""
@@ -107,6 +122,88 @@ public struct TakipKaydi: Equatable {
         }
 
         public func gecti(_ i: Int) -> Bool { i < simdi || bitti }
+    }
+}
+
+/// Aşama değişince müşteriye gösterilecek bildirim.
+public struct TakipBildirimi: Equatable {
+    public var baslik: String
+    public var govde: String
+
+    public init(baslik: String, govde: String) {
+        self.baslik = baslik
+        self.govde = govde
+    }
+}
+
+extension TakipKaydi {
+    /// Önceki görülen durumla karşılaştırır; müşteriye haber verilecek bir
+    /// değişiklik varsa bildirim metnini döner.
+    ///
+    /// Durum ya da aşama değiştiyse panelde müşteri için yazılan metin gider
+    /// ("Randevunuz alındı. Randevu bilgileriniz size iletildi."). Yalnız yeni
+    /// not geldiyse notun içeriği yazılmaz: bildirim kilit ekranında görünür.
+    public func bildirim(onceki: TakipKaydi) -> TakipBildirimi? {
+        let baslik = ulke.isEmpty ? "Vize başvurunuz" : "\(ulke) vize başvurunuz"
+        if durum != onceki.durum || asama != onceki.asama || bitti != onceki.bitti {
+            var govde = durum.isEmpty ? "Başvurunuzun durumu güncellendi." : durum
+            if !govde.hasSuffix(".") { govde += "." }
+            if !aciklama.isEmpty { govde += " " + aciklama }
+            return TakipBildirimi(baslik: baslik, govde: govde)
+        }
+        if notlar.count > onceki.notlar.count {
+            return TakipBildirimi(baslik: baslik, govde: "Size yeni bir not iletildi. Görmek için dokunun.")
+        }
+        return nil
+    }
+}
+
+/// Açılıştaki karşılama: "Günaydın, Ahmet".
+public enum Selamlama {
+    /// Günün saatine göre (cihazın saati): 05–11 Günaydın, 12–17 İyi günler,
+    /// 18–21 İyi akşamlar, 22–04 İyi geceler.
+    public static func metin(saat: Int) -> String {
+        switch saat {
+        case 5..<12: return "Günaydın"
+        case 12..<18: return "İyi günler"
+        case 18..<22: return "İyi akşamlar"
+        default: return "İyi geceler"
+        }
+    }
+
+    /// Takip kaydındaki ad büyük harfle ve çoğunlukla Latin harfleriyle durur
+    /// ("AHMET", "AYSE NUR"); karşılamada "Ahmet", "Ayse Nur" yazılır.
+    ///
+    /// I harfi: Latin harfli adda "i" olur (ALI → Ali). Adda Türkçe büyük harf
+    /// varsa (İBRAHİM, IŞIK) Türkçe kuralı geçerlidir: I → ı, İ → i.
+    public static func ad(_ ham: String) -> String {
+        let s = ham.kirpik
+        if s.isEmpty || s.contains(where: { $0.isLowercase }) { return s }
+        let turkce = s.contains(where: { "ÇĞİÖŞÜ".contains($0) })
+        var out = ""
+        var basta = true
+        for c in s {
+            if c == " " || c == "-" || c == "'" {
+                out.append(c)
+                basta = true
+            } else if basta {
+                out.append(c)
+                basta = false
+            } else if c == "I" {
+                out += turkce ? "ı" : "i"
+            } else if c == "İ" {
+                out += "i"
+            } else {
+                out += String(c).lowercased()
+            }
+        }
+        return out
+    }
+
+    /// "Günaydın, Ahmet" — ad yoksa yalnız "Günaydın".
+    public static func cumle(saat: Int, ad ham: String) -> String {
+        let a = ad(ham)
+        return a.isEmpty ? metin(saat: saat) : "\(metin(saat: saat)), \(a)"
     }
 }
 

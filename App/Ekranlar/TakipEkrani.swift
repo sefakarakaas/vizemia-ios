@@ -1,26 +1,47 @@
 import SwiftUI
 import VizeMiaCekirdek
 
-/// Başvuru takibi: takip kodu + pasaport numarasıyla durum sorgusu
-/// (sitedeki /takip sayfasının karşılığı).
+/// Başvuru takibi (sitedeki /takip sayfasının karşılığı).
+///
+/// İki hâli var: "Beni unutma" diyen müşteri sekmeye dokununca doğrudan
+/// sürecini görür; diğerleri takip kodu ve pasaport numarasıyla sorgular.
 struct TakipEkrani: View {
+    @Environment(TakipHafizasi.self) private var hafiza
+
+    var body: some View {
+        Group {
+            if hafiza.hatirlaniyor {
+                HatirlananTakip()
+            } else {
+                TakipSorgusu()
+            }
+        }
+        .ekranZemini()
+        .navigationTitle("Takip")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Sorgu
+
+/// Takip kodu + pasaport numarasıyla durum sorgusu.
+struct TakipSorgusu: View {
     @Environment(Gezinti.self) private var gezinti
+    @Environment(TakipHafizasi.self) private var hafiza
+    @Environment(\.scenePhase) private var sahne
 
     @State private var yil = String(Calendar(identifier: .gregorian).component(.year, from: Date()))
     @State private var kalan = ""
     @State private var pasaport = ""
-    @State private var hatirla = false
     @State private var hata: String?
     @State private var yukleniyor = false
     @State private var kayit: TakipKaydi?
     @State private var sorgulananKod = ""
+    @State private var sorgulananPasaport = ""
     /// Ekrandaki kaydın Firestore kimliği (sessiz yenileme için).
     @State private var sonKimlik: String?
     @State private var sinir = DenemeSiniri()
-    @State private var ilkAcilis = true
-    @State private var baglantidanGeldi = false
     @FocusState private var odak: Kutu?
-    @Environment(\.scenePhase) private var sahne
 
     private enum Kutu { case kod, pasaport }
 
@@ -46,6 +67,7 @@ struct TakipEkrani: View {
 
                 if let k = kayit {
                     TakipSonucu(kayit: k, kod: sorgulananKod)
+                    beniUnutma(k)
                 }
             }
             .padding(Tema.bosluk)
@@ -56,16 +78,6 @@ struct TakipEkrani: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { koduUygula() }
         .onChange(of: gezinti.takipKodu) { _, _ in koduUygula() }
-        .task {
-            // Daha önce "hatırla" denildiyse bilgiler dolu gelir ve durum kendiliğinden sorgulanır.
-            // Bağlantıyla başka bir kod geldiyse o öncelikli: kayıtlı bilgi üstüne yazılmaz.
-            guard ilkAcilis else { return }
-            ilkAcilis = false
-            if !baglantidanGeldi, let k = Kasa.oku(), let p = Takip.kodAyir(k.kod) {
-                yil = p.yil; kalan = p.kalan; pasaport = k.pasaport; hatirla = true
-                await sorgula(otomatik: true)
-            }
-        }
         .onChange(of: sahne) { _, yeni in
             // Uygulama yeniden öne gelince ekrandaki durum sessizce tazelenir.
             if yeni == .active { Task { await tazele() } }
@@ -124,11 +136,6 @@ struct TakipEkrani: View {
                     }
             }
 
-            IsaretKutusu(secili: $hatirla, metin: "Bu telefonda hatırla. Uygulamayı açınca durumunuz kendiliğinden görünür; bilgiler yalnız bu cihazda saklanır.")
-                .onChange(of: hatirla) { _, acik in
-                    if !acik { Kasa.sil() }
-                }
-
             if let h = hata { HataMetni(metin: h) }
 
             Button {
@@ -146,6 +153,40 @@ struct TakipEkrani: View {
         .kart()
     }
 
+    /// Sonucun altındaki "Beni unutma" kutusu. Yalnız basan müşteri hatırlanır.
+    private func beniUnutma(_ k: TakipKaydi) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Her seferinde yeniden yazmayın", systemImage: "bell.badge.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+            Text("“Beni unutma”ya basarsanız uygulamayı her açtığınızda sizi adınızla karşılar, Takip sekmesinde sürecinizi doğrudan gösterir ve aşama değişince telefonunuza bildirim gönderir. Bilgileriniz yalnız bu telefonda saklanır.")
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.88))
+            if let onceki = hafiza.son {
+                Text("Şu an \(Selamlama.ad(onceki.ad)) hatırlanıyor; bu başvuru onun yerini alır.")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Tema.turkuaz)
+            }
+            Button("Beni unutma") { hatirla(k) }
+                .buttonStyle(AnaDugme(renk: Tema.turkuaz))
+                .padding(.top, 4)
+                .accessibilityIdentifier("beni-unutma")
+        }
+        .padding(Tema.bosluk)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Tema.lacivert, in: RoundedRectangle(cornerRadius: Tema.kose, style: .continuous))
+    }
+
+    private func hatirla(_ k: TakipKaydi) {
+        hafiza.hatirla(kod: sorgulananKod, pasaport: sorgulananPasaport, son: k)
+        // Başka bir başvuruyu sorgulamak için açılan ikinci ekransa kapanır.
+        gezinti.yollar[.takip] = []
+        // Bildirim izni yalnız şimdi, müşteri istediği anda sorulur.
+        Task {
+            if await Bildirimler.izinIste() { Bildirimler.sonrakiDenetimiPlanla() }
+        }
+    }
+
     /// Bağlantıyla gelen takip kodu ("/takip?kod=2026-091234") kutulara yazılır;
     /// müşteri yalnız pasaport numarasını girer.
     private func koduUygula() {
@@ -153,29 +194,24 @@ struct TakipEkrani: View {
         guard !k.isEmpty else { return }
         gezinti.takipKodu = ""
         guard let p = Takip.kodAyir(k) else { return }
-        baglantidanGeldi = true
         if "\(p.yil)-\(p.kalan)" != kod {
             pasaport = ""
             kayit = nil
             sonKimlik = nil
-            hatirla = false
         }
         yil = p.yil; kalan = p.kalan
         hata = nil
         odak = .pasaport
     }
 
-    private func sorgula(otomatik: Bool = false) async {
-        // Kendiliğinden sorguda (kayıtlı bilgiyle açılış) klavyeye ve hata satırına dokunulmaz.
-        if !otomatik {
-            hata = nil
-            odak = nil
-        }
+    private func sorgula() async {
+        hata = nil
+        odak = nil
         if let h = Takip.hata(kod: kod, pasaport: pasaport) {
-            if !otomatik { hata = h }
+            hata = h
             return
         }
-        if !otomatik, sinir.asildi() {
+        if sinir.asildi() {
             hata = "Çok fazla deneme yaptınız. Lütfen birkaç dakika sonra tekrar deneyin."
             return
         }
@@ -188,19 +224,15 @@ struct TakipEkrani: View {
             guard let belge = try await FirestoreIstemci().belge("takip/\(kimlik)") else {
                 kayit = nil
                 sonKimlik = nil
-                if !otomatik {
-                    hata = "Bu bilgilerle eşleşen bir başvuru bulunamadı. Takip kodunu ve pasaport numaranızı kontrol edin."
-                }
+                hata = "Bu bilgilerle eşleşen bir başvuru bulunamadı. Takip kodunu ve pasaport numaranızı kontrol edin."
                 return
             }
             withAnimation { kayit = TakipKaydi(belge: belge) }
             sorgulananKod = sorguKodu
+            sorgulananPasaport = temiz
             sonKimlik = kimlik
-            if hatirla { Kasa.yaz(Kasa.Kayit(kod: sorguKodu, pasaport: temiz)) }
         } catch {
-            if !otomatik {
-                hata = "Şu anda sorgulama yapılamıyor. Lütfen daha sonra tekrar deneyin."
-            }
+            hata = "Şu anda sorgulama yapılamıyor. Lütfen daha sonra tekrar deneyin."
         }
     }
 
@@ -222,16 +254,170 @@ struct TakipEkrani: View {
     }
 }
 
-/// Sorgu sonucu: durum kartı, aşama çubuğu, notlar.
+// MARK: - Hatırlanan müşteri
+
+/// "Beni unutma" diyen müşterinin Takip sekmesi: karşılama, animasyonlu
+/// yolculuk, durum ve notlar. Form yok; sekmeye dokununca süreç doğrudan gelir.
+struct HatirlananTakip: View {
+    @Environment(TakipHafizasi.self) private var hafiza
+    @Environment(Gezinti.self) private var gezinti
+    @Environment(\.scenePhase) private var sahne
+
+    @State private var bildirimAcik = true
+    @State private var bildirimReddedildi = false
+    @State private var unutSorusu = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                karsilama
+                if let k = hafiza.son {
+                    TakipSonucu(kayit: k, kod: hafiza.kayit?.kod ?? "", onceYolculuk: true)
+                }
+                if hafiza.silinmis { silinmisBilgisi }
+                bildirimSatiri
+                altDugmeler
+            }
+            .padding(Tema.bosluk)
+        }
+        .refreshable { await hafiza.yenile(zorla: true) }
+        .task {
+            hafiza.goruldu()
+            baglantiKodunaBak()
+            await bildirimDurumunuOku()
+            await hafiza.yenile()
+        }
+        .onChange(of: gezinti.takipKodu) { _, _ in baglantiKodunaBak() }
+        .onChange(of: sahne) { _, yeni in
+            // Ayarlardan dönüldüyse bildirim izni değişmiş olabilir.
+            if yeni == .active { Task { await bildirimDurumunuOku() } }
+        }
+        .confirmationDialog("Bu telefon sizi unutsun mu?", isPresented: $unutSorusu, titleVisibility: .visible) {
+            Button("Beni unut", role: .destructive) { hafiza.unut() }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("Takip kodunuz ve pasaport numaranız bu telefondan silinir, bildirim gelmez. Dilediğinizde yeniden sorgulayabilirsiniz.")
+        }
+    }
+
+    private var karsilama: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Günün saatine göre: Günaydın / İyi günler / İyi akşamlar / İyi geceler.
+            TimelineView(.everyMinute) { zaman in
+                Text(Selamlama.cumle(saat: Calendar.current.component(.hour, from: zaman.date), ad: hafiza.son?.ad ?? ""))
+                    .font(.vitrin(28))
+                    .foregroundStyle(Tema.lacivert)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            HStack(spacing: 8) {
+                Text("Başvurunuz şu an burada:").govdeMetni()
+                if hafiza.yenileniyor { ProgressView().controlSize(.small) }
+            }
+        }
+    }
+
+    private var silinmisBilgisi: some View {
+        Text("Bu başvuru artık takipte görünmüyor. İşlem tamamlandıktan bir süre sonra kayıtlar silinir; aşağıdaki son durumdur.")
+            .font(.footnote)
+            .foregroundStyle(Tema.uyari)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Tema.uyariZemin, in: RoundedRectangle(cornerRadius: Tema.koseKucuk, style: .continuous))
+    }
+
+    @ViewBuilder private var bildirimSatiri: some View {
+        if bildirimAcik {
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Aşama değişince bildirim alacaksınız", systemImage: "bell.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Tema.lacivert)
+                Text("Uygulama durumu arka planda belirli aralıklarla denetler; bildirim birkaç saat gecikebilir. Güncel durumu görmek için bu ekranı aşağı çekip yenileyebilirsiniz.")
+                    .font(.caption)
+                    .foregroundStyle(Tema.govde)
+            }
+            .kart(dolgu: 14)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Bildirimler kapalı", systemImage: "bell.slash.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Tema.lacivert)
+                Text("Açarsanız aşama değişince telefonunuza haber veririz.").font(.caption).foregroundStyle(Tema.govde)
+                Button("Bildirimleri aç") {
+                    if bildirimReddedildi {
+                        // İzin daha önce reddedildi: yalnız sistem ayarlarından açılabilir.
+                        Bildirimler.ayarlariAc()
+                    } else {
+                        Task {
+                            if await Bildirimler.izinIste() { Bildirimler.sonrakiDenetimiPlanla() }
+                            await bildirimDurumunuOku()
+                        }
+                    }
+                }
+                .buttonStyle(IkincilDugme())
+            }
+            .kart(dolgu: 14)
+        }
+    }
+
+    private var altDugmeler: some View {
+        VStack(spacing: 14) {
+            NavigationLink(value: Rota.takipSorgu) {
+                Text("Başka bir başvuruyu sorgula")
+            }
+            .buttonStyle(IkincilDugme())
+
+            Button {
+                unutSorusu = true
+            } label: {
+                Text("Beni unut")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Tema.olumsuz)
+            }
+            .accessibilityIdentifier("beni-unut")
+            .accessibilityHint("Bu telefondaki takip bilgilerinizi siler")
+        }
+        .padding(.top, 4)
+    }
+
+    private func bildirimDurumunuOku() async {
+        bildirimAcik = await Bildirimler.izinVerildi()
+        bildirimReddedildi = await Bildirimler.reddedildi()
+    }
+
+    /// Bağlantıyla başka bir takip kodu geldiyse sorgu ekranı açılır (kodu o alır);
+    /// hatırlanan başvurunun koduysa yapılacak bir şey yok.
+    private func baglantiKodunaBak() {
+        let k = gezinti.takipKodu
+        guard !k.isEmpty else { return }
+        if let p = Takip.kodAyir(k), "\(p.yil)-\(p.kalan)" != hafiza.kayit?.kod {
+            let acik = gezinti.yollar[.takip]?.contains(Rota.takipSorgu) ?? false
+            if !acik { gezinti.yollar[.takip, default: []].append(Rota.takipSorgu) }
+        } else {
+            gezinti.takipKodu = ""
+        }
+    }
+}
+
+// MARK: - Sonuç
+
+/// Durum kartı, aşama çubuğu, notlar.
 struct TakipSonucu: View {
     var kayit: TakipKaydi
     var kod: String
+    /// Hatırlanan müşteride önce animasyonlu yolculuk, sonra durum gelir.
+    var onceYolculuk = false
     @Environment(Gezinti.self) private var gezinti
 
     var body: some View {
         VStack(spacing: 16) {
-            durum
-            if let i = kayit.ilerleme { Yolculuk(ilerleme: i) }
+            if onceYolculuk {
+                if let i = kayit.ilerleme { Yolculuk(ilerleme: i) }
+                durum
+            } else {
+                durum
+                if let i = kayit.ilerleme { Yolculuk(ilerleme: i) }
+            }
             if !kayit.notlar.isEmpty { notlar }
             Button {
                 gezinti.it(.destek(kod: kod))
@@ -351,13 +537,15 @@ struct Yolculuk: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(ilerleme.adlar.count) aşamadan \(ilerleme.simdi + 1). aşama: \(ilerleme.adlar[ilerleme.simdi])")
         .onAppear {
-            // Ekran açılınca pasaport baştan bulunduğu aşamaya yürür.
+            // Ekran her açıldığında pasaport baştan bulunduğu aşamaya yürür.
             if hareketAz {
                 oran = ilerleme.oran
             } else {
-                withAnimation(.easeInOut(duration: 1.1).delay(0.2)) { oran = ilerleme.oran }
+                withAnimation(.easeInOut(duration: 1.2).delay(0.25)) { oran = ilerleme.oran }
             }
         }
+        // Sekmeden çıkınca başa döner; geri gelindiğinde animasyon yeniden oynar.
+        .onDisappear { oran = 0 }
         .onChange(of: ilerleme) { _, yeni in
             withAnimation(.easeInOut(duration: 0.6)) { oran = yeni.oran }
         }

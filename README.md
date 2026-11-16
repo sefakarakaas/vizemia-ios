@@ -5,12 +5,21 @@
 | Sekme | Sitedeki karşılığı | Veri |
 |---|---|---|
 | **Ana Sayfa** | Ana sayfa: vitrin, ülkeler, rehberler, süreç, SSS, blog, iletişim | `vitrin.json`, `uygulama.json` |
-| **Takip** | `/takip` | Firestore `takip/{kimlik}` (yalnız kod + pasaportla) |
+| **Takip** | `/takip` + "Beni unutma" (aşağıda) | Firestore `takip/{kimlik}` (yalnız kod + pasaportla) |
 | **Başvur** | `/basvuru` ("Sizi Arayalım") | Firestore `applicationRequests` → panelde Talepler |
 | **Harç & Kur** | `/harclar` | `uygulama.json`, `kur.json`, anlık kur servisi |
 | **Daha** | Ülke rehberleri, blog, SSS, destek formu, iletişim, hakkımızda | `uygulama.json`, Firestore `support` |
 
 Sıradaki adımlar: müşteri formu (`/form`) ve pasaport okutma, bildirimler, ardından çalışan girişi (panel).
+
+## "Beni unutma" (uygulamaya özel)
+
+Takip sonucunun altındaki **Beni unutma** düğmesine basan müşteri için:
+
+- Uygulama her açılışta adıyla karşılar ("Günaydın, Ahmet") ve ana sayfanın başında başvurusunun durumunu gösterir.
+- **Takip** sekmesi sorgu formu yerine doğrudan sürecini gösterir; pasaport, bulunduğu aşamaya kadar animasyonla yürür.
+- **Aşama değişince bildirim** gelir. Bildirimi sunucu göndermez: uygulama arka planda durumu belirli aralıklarla kendisi denetler ve son gördüğünden farklıysa bildirimi telefonda üretir. Sunucu, anahtar ya da cihaz kaydı gerekmez; karşılığında bildirim birkaç saat gecikebilir (denetimin ne zaman çalışacağına iOS karar verir) ve uygulama elle kapatıldıysa gelmeyebilir. Anında bildirim için sunucudan gönderim (APNs) gerekir — sıradaki adım.
+- Takip kodu, pasaport numarası ve son görülen durum yalnız telefonun Anahtar Zinciri'nde durur; **Beni unut** ile silinir. Düğmeye basmayan müşteri için hiçbir şey saklanmaz.
 
 ## Siteyle nasıl eşleniyor?
 

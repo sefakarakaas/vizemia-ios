@@ -1,9 +1,14 @@
 import Foundation
 import Security
+import VizeMiaCekirdek
 
-/// Takip bilgisini (kod + pasaport numarası) cihazın Anahtar Zinciri'nde saklar.
-/// Yalnız müşteri "Bu telefonda hatırla"yı açarsa yazılır; cihazdan çıkmaz,
-/// iCloud'a yedeklenmez, telefon kilitliyken okunamaz.
+/// "Beni unutma" diyen müşterinin takip bilgisi (kod + pasaport numarası) ve
+/// son gördüğü durum, cihazın Anahtar Zinciri'nde saklanır. Yalnız müşteri
+/// düğmeye basarsa yazılır; cihazdan çıkmaz, iCloud'a yedeklenmez.
+///
+/// Erişim "ilk kilit açılışından sonra": arka plandaki durum denetimi telefon
+/// kilitliyken de çalışabilsin diye. Telefon yeniden başlatılıp hiç açılmadıysa
+/// okunamaz.
 enum Kasa {
     private static let servis = "com.vizemia.app.takip"
     private static let hesap = "son-sorgu"
@@ -11,6 +16,9 @@ enum Kasa {
     struct Kayit: Codable, Equatable {
         var kod: String
         var pasaport: String
+        /// Son görülen durum: açılıştaki karşılamada ve çevrimdışıyken gösterilir;
+        /// değişiklik bildirimi bununla karşılaştırılarak üretilir.
+        var son: TakipKaydi?
     }
 
     private static var sorgu: [String: Any] {
@@ -36,7 +44,7 @@ enum Kasa {
         SecItemDelete(sorgu as CFDictionary)
         var s = sorgu
         s[kSecValueData as String] = veri
-        s[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        s[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(s as CFDictionary, nil)
     }
 

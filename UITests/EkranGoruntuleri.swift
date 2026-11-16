@@ -8,16 +8,60 @@ import XCTest
 /// onay seçilmez), gönderim doğrulamada durur. Takip sorgusu yalnız okur.
 final class EkranGoruntuleri: XCTestCase {
     private var app: XCUIApplication!
-    private var sira = 0
+    /// Görüntü sırası bütün testlerde ortak: dosya adları çakışmasın.
+    private static var sira = 0
 
     override func setUp() {
         continueAfterFailure = true
         app = XCUIApplication()
+    }
+
+    /// "Beni unutma" demiş müşteri: açılışta adıyla karşılanır, Takip sekmesi
+    /// doğrudan animasyonlu süreci gösterir. Örnek kayıtla açılır (ağa ve
+    /// Anahtar Zinciri'ne dokunmaz).
+    func testHatirlananMusteri() {
+        app.launchArguments = ["-ornek-takip"]
         app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Ana Sayfa"].waitForExistence(timeout: 60))
+        XCTAssertTrue(metin(", Ahmet").waitForExistence(timeout: 10), "Açılışta karşılama yok")
+        bekle(2)
+        cek("karsilama")
+
+        sekme("Takip")
+        XCTAssertTrue(metin("Başvurunuzun yolculuğu").waitForExistence(timeout: 10), "Takip sekmesi süreci doğrudan göstermedi")
+        XCTAssertFalse(app.textFields["takip-kod"].exists, "Hatırlanan müşteriye sorgu formu gösterildi")
+        cek("takip-hatirlanan-animasyon")   // pasaport yolda
+        bekle(2)
+        cek("takip-hatirlanan")
+        surukle(0.80, 0.25)
+        cek("takip-hatirlanan-2")
+        surukle(0.80, 0.25)
+        cek("takip-hatirlanan-3")
+
+        // "Beni unut" → onay → sorgu formu geri gelir.
+        let unut = app.buttons["beni-unut"]
+        if unut.waitForExistence(timeout: 5) {
+            unut.tap()
+            bekle(1)
+            cek("takip-unut-onayi")
+            // Onay penceresindeki "Beni unut": sayfadaki aynı adlı düğmeden sonra gelir.
+            let adaylar = app.buttons.matching(NSPredicate(format: "label == %@", "Beni unut"))
+            let sayi = adaylar.count
+            if sayi > 1 {
+                adaylar.element(boundBy: sayi - 1).tap()
+            } else {
+                XCTFail("Onay penceresi açılmadı")
+            }
+            XCTAssertTrue(app.textFields["takip-kod"].waitForExistence(timeout: 8), "Beni unut sonrası sorgu formu gelmedi")
+            cek("takip-unutuldu")
+        } else {
+            XCTFail("Beni unut düğmesi yok")
+        }
     }
 
     func testEkranlar() {
-        XCTAssertTrue(app.tabBars.buttons["Ana Sayfa"].waitForExistence(timeout: 30))
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Ana Sayfa"].waitForExistence(timeout: 60))
         bekle(3)   // vitrin görseli insin
         cek("ana-sayfa")
 
@@ -35,10 +79,10 @@ final class EkranGoruntuleri: XCTestCase {
         // --- Takip: olmayan kayıt sorgulanır; uygulama Firestore'dan cevap alıp "bulunamadı" demeli.
         sekme("Takip")
         yaz("takip-kod", "091234")
-        yaz("takip-pasaport", "u12345678")
-        XCTAssertEqual(app.textFields["takip-pasaport"].value as? String, "U12345678", "Pasaport numarası büyük harfe çevrilmedi")
-        app.buttons["Durumu sorgula"].tap()
+        // Klavyedeki "ara" tuşuyla gönderilir (klavye açıkken düğmenin yarısı kapanıyor).
+        yaz("takip-pasaport", "u12345678\n")
         XCTAssertTrue(metin("bulunamadı").waitForExistence(timeout: 25), "Takip sorgusu cevap vermedi")
+        XCTAssertEqual(app.textFields["takip-pasaport"].value as? String, "U12345678", "Pasaport numarası büyük harfe çevrilmedi")
         cek("takip-bulunamadi")
 
         // --- Başvur: harf kuralı, klavyeyi kapatma, ülke arama, saat seçici, doğrulama hatası.
@@ -189,7 +233,8 @@ final class EkranGoruntuleri: XCTestCase {
     }
 
     private func cek(_ ad: String) {
-        sira += 1
+        EkranGoruntuleri.sira += 1
+        let sira = EkranGoruntuleri.sira
         let goruntu = XCUIScreen.main.screenshot()
         let ek = XCTAttachment(screenshot: goruntu)
         ek.name = String(format: "%02d-%@", sira, ad)

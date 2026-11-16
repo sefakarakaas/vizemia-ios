@@ -9,6 +9,12 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 - **Dil:** kod adları, yorumlar ve kullanıcıya görünen metinler Türkçe (site deposuyla aynı üslup). Yorumlar "neden"i anlatır.
 - **Canlı veritabanına test verisi yazılmaz.** Form kayıtları Firestore emülatöründe denenir (README → Geliştirme). Ekran testi bilerek eksik form bırakır; hiçbir şey göndermez.
 
+## "Beni unutma"
+
+- Durum: `App/Durum/TakipHafizasi.swift` (hatırlanan başvuru, son görülen durum), `Kasa.swift` (Anahtar Zinciri), `Bildirimler.swift` (izin, yerel bildirim, arka plan denetimi). Metinler ve değişiklik kuralı çekirdekte: `Selamlama`, `TakipKaydi.bildirim(onceki:)`.
+- Bildirim sunucudan gelmiyor (arka plan denetimi + yerel bildirim). Gerçek anlık bildirim (APNs) ayrı bir iş: Apple anahtarı, site deposunda gönderici ve cihaz kaydı kuralı gerekir.
+- Ekran testinde örnek kayıt: uygulama `-ornek-takip` ile açılırsa (yalnız geliştirme derlemesi) ağa ve Anahtar Zinciri'ne dokunmadan hatırlanan müşteri hâlini gösterir.
+
 ## Yapı
 
 - `Cekirdek/` — ekran içermeyen bütün mantık (Swift paketi). Linux'ta derlenir: `cd Cekirdek && swift test`. Yeni mantık buraya, testiyle birlikte yazılır.

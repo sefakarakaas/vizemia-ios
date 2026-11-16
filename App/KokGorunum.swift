@@ -5,6 +5,7 @@ import VizeMiaCekirdek
 struct KokGorunum: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
+    @Environment(TakipHafizasi.self) private var hafiza
 
     var body: some View {
         @Bindable var gezinti = gezinti
@@ -15,6 +16,8 @@ struct KokGorunum: View {
             sekme(.takip) { TakipEkrani() }
                 .tabItem { Label("Takip", systemImage: "doc.text.magnifyingglass") }
                 .tag(Sekme.takip)
+                // Müşterinin henüz görmediği bir aşama değişikliği varsa rozet.
+                .badge(hafiza.yeniVar ? 1 : 0)
             sekme(.basvuru) { BasvuruEkrani() }
                 .tabItem { Label("Başvur", systemImage: "phone.arrow.down.left.fill") }
                 .tag(Sekme.basvuru)
@@ -60,6 +63,7 @@ struct KokGorunum: View {
                     case .sss: SssEkrani()
                     case .destek(let kod): DestekEkrani(kod: kod)
                     case .iletisim: IletisimEkrani()
+                    case .takipSorgu: TakipSorgusu()
                     }
                 }
         }

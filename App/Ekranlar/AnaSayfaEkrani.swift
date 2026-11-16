@@ -6,10 +6,19 @@ import VizeMiaCekirdek
 struct AnaSayfaEkrani: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
+    @Environment(TakipHafizasi.self) private var hafiza
 
     var body: some View {
         ScrollView {
             VStack(spacing: 28) {
+                // "Beni unutma" diyen müşteriyi açılışta adıyla karşılar.
+                if let k = hafiza.son {
+                    KarsilamaKarti(kayit: k, yeniVar: hafiza.yeniVar)
+                        .padding(.horizontal, Tema.bosluk)
+                        .padding(.top, Tema.bosluk)
+                        .padding(.bottom, -12)
+                }
+
                 VitrinGorunumu(slaytlar: icerik.vitrin)
 
                 VStack(spacing: 28) {
@@ -197,6 +206,67 @@ struct AnaSayfaEkrani: View {
                 }
             }
         }
+    }
+}
+
+/// Açılıştaki karşılama: "Günaydın, Ahmet", başvurunun durumu ve kısa ilerleme
+/// çubuğu. Dokununca Takip sekmesindeki animasyonlu süreç açılır.
+struct KarsilamaKarti: View {
+    var kayit: TakipKaydi
+    var yeniVar: Bool
+    @Environment(Gezinti.self) private var gezinti
+
+    var body: some View {
+        Button {
+            gezinti.ac(.takip(kod: ""))
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                // Günün saatine göre: Günaydın / İyi günler / İyi akşamlar / İyi geceler.
+                TimelineView(.everyMinute) { zaman in
+                    Text(Selamlama.cumle(saat: Calendar.current.component(.hour, from: zaman.date), ad: kayit.ad))
+                        .font(.vitrin(26))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(kayit.ulke.isEmpty ? "Vize başvurunuz" : "\(kayit.ulke) vize başvurunuz")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                    HStack(spacing: 8) {
+                        Text(kayit.durum.isEmpty ? "Durumu görün" : kayit.durum)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.leading)
+                        if yeniVar {
+                            Text("Yeni")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(Tema.lacivert)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Tema.turkuaz, in: Capsule())
+                        }
+                    }
+                }
+                if let i = kayit.ilerleme {
+                    ProgressView(value: Double(i.simdi + 1), total: Double(i.adlar.count))
+                        .tint(i.bitti ? Tema.olumlu : Tema.turkuaz)
+                    Text(i.ozet)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .multilineTextAlignment(.leading)
+                }
+                HStack(spacing: 6) {
+                    Text("Süreci gör").font(.subheadline.weight(.bold))
+                    Image(systemName: "arrow.right").font(.subheadline.weight(.bold))
+                }
+                .foregroundStyle(Tema.turkuaz)
+            }
+            .padding(Tema.bosluk)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Tema.lacivert, in: RoundedRectangle(cornerRadius: Tema.kose, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("karsilama")
     }
 }
 

@@ -88,6 +88,74 @@ final class TakipTests: XCTestCase {
         XCTAssertNil(TakipKaydi(belge: [:]).ilerleme)
     }
 
+    func testSelamlama() {
+        XCTAssertEqual(Selamlama.metin(saat: 5), "Günaydın")
+        XCTAssertEqual(Selamlama.metin(saat: 11), "Günaydın")
+        XCTAssertEqual(Selamlama.metin(saat: 12), "İyi günler")
+        XCTAssertEqual(Selamlama.metin(saat: 17), "İyi günler")
+        XCTAssertEqual(Selamlama.metin(saat: 18), "İyi akşamlar")
+        XCTAssertEqual(Selamlama.metin(saat: 22), "İyi geceler")
+        XCTAssertEqual(Selamlama.metin(saat: 3), "İyi geceler")
+        XCTAssertEqual(Selamlama.cumle(saat: 8, ad: "AHMET"), "Günaydın, Ahmet")
+        XCTAssertEqual(Selamlama.cumle(saat: 8, ad: "  "), "Günaydın")
+    }
+
+    func testAdGosterimi() {
+        // Panel adı Latin büyük harfle yazıyor.
+        XCTAssertEqual(Selamlama.ad("AHMET"), "Ahmet")
+        XCTAssertEqual(Selamlama.ad("AYSE NUR"), "Ayse Nur")
+        XCTAssertEqual(Selamlama.ad("ALI"), "Ali")
+        XCTAssertEqual(Selamlama.ad("MEHMET-ALI"), "Mehmet-Ali")
+        // Almanya başvurusunda Ö/Ü kalıyor.
+        XCTAssertEqual(Selamlama.ad("GÜL"), "Gül")
+        XCTAssertEqual(Selamlama.ad("ÖZGE"), "Özge")
+        // Türkçe harfle yazılmışsa Türkçe kuralı.
+        XCTAssertEqual(Selamlama.ad("İBRAHİM"), "İbrahim")
+        XCTAssertEqual(Selamlama.ad("IŞIK"), "Işık")
+        // Zaten küçük harf içeriyorsa dokunulmaz.
+        XCTAssertEqual(Selamlama.ad(" Ayşe "), "Ayşe")
+        XCTAssertEqual(Selamlama.ad(""), "")
+    }
+
+    func testDegisiklikBildirimi() {
+        let asamalar = ["Görüşme", "Randevu takibi", "Randevu alındı", "Evraklar"]
+        let once = TakipKaydi(ulke: "Almanya", ad: "AHMET", durum: "Randevunuz takip ediliyor",
+                              aciklama: "Uygun randevu tarihlerini takip ediyoruz.", asamalar: asamalar, asama: 1)
+        // Değişiklik yok: bildirim yok.
+        XCTAssertNil(once.bildirim(onceki: once))
+        // Yeni aşama: panelde müşteri için yazılan metin gider.
+        var sonra = once
+        sonra.durum = "Randevunuz alındı"; sonra.aciklama = "Randevu bilgileriniz size iletildi."; sonra.asama = 2
+        XCTAssertEqual(sonra.bildirim(onceki: once), TakipBildirimi(
+            baslik: "Almanya vize başvurunuz", govde: "Randevunuz alındı. Randevu bilgileriniz size iletildi."))
+        // Aynı aşamada yalnız durum değişti (eksik evrak): yine haber verilir.
+        var eksik = sonra
+        eksik.durum = "Eksik evrak var"; eksik.aciklama = ""
+        XCTAssertEqual(eksik.bildirim(onceki: sonra)?.govde, "Eksik evrak var.")
+        // Yalnız yeni not: notun içeriği bildirime yazılmaz (kilit ekranında görünür).
+        var notlu = sonra
+        notlu.notlar = [TakipKaydi.Not(id: 0, metin: "Sigorta poliçeniz eksik.")]
+        XCTAssertEqual(notlu.bildirim(onceki: sonra)?.govde, "Size yeni bir not iletildi. Görmek için dokunun.")
+        XCTAssertNil(sonra.bildirim(onceki: notlu))   // not silindi: haber verilmez
+        // Yalnız güncelleme saati değişti: haber verilmez.
+        var saat = sonra
+        saat.guncelleme = an("2026-11-16T10:00:00Z")
+        XCTAssertNil(saat.bildirim(onceki: sonra))
+        // Ülke yoksa başlık genel.
+        var ulkesiz = sonra
+        ulkesiz.ulke = ""
+        XCTAssertEqual(ulkesiz.bildirim(onceki: once)?.baslik, "Vize başvurunuz")
+    }
+
+    func testKayitSaklanipGeriOkunuyor() throws {
+        let k = TakipKaydi(ulke: "Almanya", ad: "AHMET", durum: "Randevunuz alındı", aciklama: "Açıklama", renk: "#5a4f9c",
+                           bitti: false, notlar: [TakipKaydi.Not(id: 0, metin: "Not", tarih: an("2026-11-05T09:41:16Z"))],
+                           asamalar: ["A", "B", "C"], asama: 1, guncelleme: an("2026-11-06T10:00:00Z"))
+        let geri = try JSONDecoder().decode(TakipKaydi.self, from: JSONEncoder().encode(k))
+        XCTAssertEqual(geri, k)
+        XCTAssertEqual(geri.ilerleme?.simdi, 1)
+    }
+
     func testDenemeSiniri() {
         var s = DenemeSiniri()
         let t = an("2026-11-16T09:00:00Z")

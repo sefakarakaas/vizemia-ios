@@ -15,5 +15,15 @@
 	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- "Beni unutma" diyen müşteri için: uygulama kapalıyken başvurunun durumu
+	     belirli aralıklarla denetlenir, değiştiyse bildirim gösterilir. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.vizemia.app.takip-yenile</string>
+	</array>
 </dict>
 </plist>
