@@ -48,6 +48,11 @@ public enum BasvuruAlani: String, Equatable {
 public struct FormHatasi: Error, Equatable {
     public var mesaj: String
     public var alan: BasvuruAlani?
+
+    public init(mesaj: String, alan: BasvuruAlani?) {
+        self.mesaj = mesaj
+        self.alan = alan
+    }
 }
 
 /// "Sizi Arayalım" formu — site/assets/basvuru.js ile aynı alanlar ve kurallar.
