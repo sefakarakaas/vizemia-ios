@@ -43,4 +43,19 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ENABLE_PREVIEWS: NO
     scheme:
-      testTargets: []
+      testTargets:
+        - VizeMiaUITests
+
+  # Ekran görüntüsü testleri (Actions → Ekran görüntüleri).
+  VizeMiaUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: VizeMia
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.vizemia.app.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: VizeMia

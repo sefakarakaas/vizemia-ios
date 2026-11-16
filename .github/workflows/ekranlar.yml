@@ -1,0 +1,66 @@
+name: Ekran görüntüleri
+
+# Elle çalıştırılır: uygulamayı iPhone simülatöründe açar, bütün sekmeleri
+# gezer ve ekran görüntülerini indirilebilir dosya olarak verir
+# (işin sayfasında en altta "ekran-goruntuleri").
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ekranlar
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ekranlar:
+    name: Simülatörde gez
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Projeyi üret
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Simülatör seç
+        run: |
+          CIHAZ=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys, re
+          d = json.load(sys.stdin)['devices']
+          def surum(k):
+              return [int(x) for x in re.findall(r'\d+', k.split('iOS')[-1])]
+          aday = [(surum(k), c) for k in d if 'SimRuntime.iOS' in k for c in d[k]
+                  if c['name'].startswith('iPhone') and not re.search('Max|Plus|SE|mini|Air|e\$', c['name'])]
+          aday.sort(key=lambda x: x[0], reverse=True)
+          print(aday[0][1]['udid'], aday[0][1]['name'], file=sys.stderr)
+          print(aday[0][1]['udid'])
+          ")
+          echo "CIHAZ=$CIHAZ" >> "$GITHUB_ENV"
+      - name: Gez ve görüntü al
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/ekranlar"
+          TEST_RUNNER_EKRAN_KLASORU="$RUNNER_TEMP/ekranlar" xcodebuild test \
+            -project VizeMia.xcodeproj -scheme VizeMia \
+            -destination "platform=iOS Simulator,id=$CIHAZ" \
+            -derivedDataPath build/derived \
+            -resultBundlePath build/sonuc.xcresult \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee test.log | grep -E "error:|Test Case|\*\* TEST|XCTAssert" || true
+          ls -la "$RUNNER_TEMP/ekranlar" || true
+      - name: Ekran görüntüleri
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ekran-goruntuleri
+          path: ${{ runner.temp }}/ekranlar
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Test kaydı
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ekran-test-log
+          path: test.log
+          retention-days: 7

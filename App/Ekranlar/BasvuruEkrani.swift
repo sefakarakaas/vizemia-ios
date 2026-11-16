@@ -81,8 +81,8 @@ struct BasvuruEkrani: View {
     private var baslik: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Ücretsiz ön değerlendirme").ustBaslik()
-            Text("Sizi arayalım").bolumBasligi()
-            Text("Bilgilerinizi bırakın; uygun saatinizde arayıp size özel evrak listesini ve süreci anlatalım.").govdeMetni()
+            Text("Sizi Arayalım").bolumBasligi()
+            Text("Bilgilerinizi bırakın, uygun saatinizde sizi arayalım.").govdeMetni()
         }
     }
 

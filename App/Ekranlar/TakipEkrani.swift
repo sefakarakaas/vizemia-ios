@@ -34,8 +34,8 @@ struct TakipEkrani: View {
             VStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Başvuru takibi").ustBaslik()
-                    Text("Başvurunuz hangi aşamada?").bolumBasligi()
-                    Text("Size verilen takip kodunu ve pasaport numaranızı yazın.").govdeMetni()
+                    Text("Başvurunuz ne durumda?").bolumBasligi()
+                    Text("Size ilettiğimiz takip kodunu ve pasaport numaranızı yazın.").govdeMetni()
                 }
 
                 form

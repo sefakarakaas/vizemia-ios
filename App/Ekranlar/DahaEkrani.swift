@@ -227,8 +227,8 @@ struct DestekEkrani: View {
                 if gonderildi {
                     VStack(alignment: .leading, spacing: 10) {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 44)).foregroundStyle(Tema.olumlu)
-                        Text("Talebiniz bize ulaştı.").font(.title2.weight(.heavy)).foregroundStyle(Tema.olumluKoyu)
-                        Text("En kısa sürede e-posta adresinizden size dönüş yapacağız.").font(.subheadline).foregroundStyle(Tema.govde)
+                        Text("Talebiniz alındı.").font(.title2.weight(.heavy)).foregroundStyle(Tema.olumluKoyu)
+                        Text("En kısa sürede e-posta ile dönüş yapacağız.").font(.subheadline).foregroundStyle(Tema.govde)
                     }
                     .padding(Tema.bosluk)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -236,8 +236,8 @@ struct DestekEkrani: View {
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Destek").ustBaslik()
-                        Text("Bize yazın").bolumBasligi()
-                        Text("Sorunuzu yazın; e-posta adresinizden size dönüş yapalım.").govdeMetni()
+                        Text("Bir sorunuz mu var?").bolumBasligi()
+                        Text("Yazın, ekibimiz en kısa sürede e-posta ile dönsün.").govdeMetni()
                     }
                     VStack(spacing: 16) {
                         Alan(etiket: "Adınız *") {
@@ -263,7 +263,7 @@ struct DestekEkrani: View {
                         Alan(etiket: "Mesajınız *") {
                             TextField("", text: $form.mesaj, axis: .vertical).lineLimit(5...10).kutu()
                         }
-                        IsaretKutusu(secili: $form.onay, metin: "Bilgilerimin destek talebimin yanıtlanması amacıyla işlenmesini kabul ediyorum. *")
+                        IsaretKutusu(secili: $form.onay, metin: "Bu talebi yanıtlamak amacıyla ad, e-posta ve telefon bilgilerimin işlenmesini kabul ediyorum. Talebim kapatıldıktan sonra saklama süresi sonunda silinir. *")
                         if let h = hata { HataMetni(metin: h) }
                         Button {
                             Task { await gonder() }
