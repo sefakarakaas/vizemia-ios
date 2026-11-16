@@ -147,6 +147,7 @@ final class EkranGoruntuleri: XCTestCase {
         surukle(0.75, 0.30)
         let ogleden = dugme("Öğleden sonra")
         if ogleden.waitForExistence(timeout: 4) { ogleden.tap() }   // gruptaki bütün aralıklar seçilir
+        bekle(1)   // basılı görünüm geçsin, grup kutusu işaretli hâliyle çıksın
         cek("basvuru-saat-2")
         surukle(0.80, 0.15); surukle(0.80, 0.15)
         let gonder = app.buttons["Beni arayın"]
