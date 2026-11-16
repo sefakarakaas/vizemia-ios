@@ -64,7 +64,7 @@ final class TakipTests: XCTestCase {
         """
         let o = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
         let k = TakipKaydi(belge: FSDeger.alanlar(o["fields"]))
-        XCTAssertEqual(k.ustSatir, "Almanya vize başvurusu · Sayın AYSE")
+        XCTAssertEqual(k.ustSatir, "Almanya vize başvurusu · Sayın Ayse")
         XCTAssertEqual(k.durum, "Randevu alındı")
         XCTAssertEqual(k.renk, "#14a9b0")
         XCTAssertEqual(k.notlar.count, 1)

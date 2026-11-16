@@ -95,9 +95,10 @@ public struct TakipKaydi: Equatable, Codable {
         asama = belge["asama"]?.tamDegeri
     }
 
-    /// Üst satır: "Almanya vize başvurusu · Sayın Ayşe"
+    /// Üst satır: "Almanya vize başvurusu · Sayın Ahmet" (ad kayıtta büyük harfle durur).
     public var ustSatir: String {
-        "\(ulke) vize başvurusu\(ad.isEmpty ? "" : " · Sayın \(ad)")".kirpik
+        let gorunenAd = Selamlama.ad(ad)
+        return "\(ulke) vize başvurusu\(gorunenAd.isEmpty ? "" : " · Sayın \(gorunenAd)")".kirpik
     }
 
     /// Aşama çubuğu gösterilecek mi? (en az 2 aşama ve geçerli sıra)

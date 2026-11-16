@@ -44,14 +44,19 @@ final class EkranGoruntuleri: XCTestCase {
             unut.tap()
             bekle(1)
             cek("takip-unut-onayi")
-            // Onay penceresindeki "Beni unut": sayfadaki aynı adlı düğmeden sonra gelir.
+            // Onay penceresi açıkken sayfadaki aynı adlı düğmeye dokunulamaz;
+            // dokunulabilen "Beni unut" penceredeki onaydır.
             let adaylar = app.buttons.matching(NSPredicate(format: "label == %@", "Beni unut"))
-            let sayi = adaylar.count
-            if sayi > 1 {
-                adaylar.element(boundBy: sayi - 1).tap()
-            } else {
-                XCTFail("Onay penceresi açılmadı")
+            var onaylandi = false
+            for i in 0..<adaylar.count {
+                let aday = adaylar.element(boundBy: i)
+                if aday.identifier != "beni-unut", aday.isHittable {
+                    aday.tap()
+                    onaylandi = true
+                    break
+                }
             }
+            XCTAssertTrue(onaylandi, "Onay penceresindeki düğme bulunamadı")
             XCTAssertTrue(app.textFields["takip-kod"].waitForExistence(timeout: 8), "Beni unut sonrası sorgu formu gelmedi")
             cek("takip-unutuldu")
         } else {
@@ -87,11 +92,15 @@ final class EkranGoruntuleri: XCTestCase {
 
         // --- Başvur: harf kuralı, klavyeyi kapatma, ülke arama, saat seçici, doğrulama hatası.
         sekme("Başvur")
-        yaz("basvuru-ad", "ayşe")
-        yaz("basvuru-soyad", "öztürk")
+        // Klavyedeki "sonraki" tuşu sıradaki kutuya geçirir: ad → soyad → telefon.
+        yaz("basvuru-ad", "ayşe\n")
+        bekle(1)   // odak sıradaki kutuya geçsin
+        app.typeText("öztürk\n")
+        bekle(1)
+        app.typeText("05499072523")
         XCTAssertEqual(app.textFields["basvuru-ad"].value as? String, "AYSE", "Ad Latin büyük harfe çevrilmedi")
         XCTAssertEqual(app.textFields["basvuru-soyad"].value as? String, "OZTURK", "Soyad Latin büyük harfe çevrilmedi")
-        yaz("basvuru-telefon", "05499072523")
+        XCTAssertEqual(app.textFields["basvuru-telefon"].value as? String, "05499072523", "Sonraki tuşu telefona geçirmedi")
         cek("basvuru-klavye")
         // Rakam klavyesinde kapatma tuşu yok; üstündeki "Bitti" düğmesi kapatmalı.
         let bitti = app.buttons["Bitti"]

@@ -292,12 +292,6 @@ struct HatirlananTakip: View {
             // Ayarlardan dönüldüyse bildirim izni değişmiş olabilir.
             if yeni == .active { Task { await bildirimDurumunuOku() } }
         }
-        .confirmationDialog("Bu telefon sizi unutsun mu?", isPresented: $unutSorusu, titleVisibility: .visible) {
-            Button("Beni unut", role: .destructive) { hafiza.unut() }
-            Button("Vazgeç", role: .cancel) {}
-        } message: {
-            Text("Takip kodunuz ve pasaport numaranız bu telefondan silinir, bildirim gelmez. Dilediğinizde yeniden sorgulayabilirsiniz.")
-        }
     }
 
     private var karsilama: some View {
@@ -376,8 +370,15 @@ struct HatirlananTakip: View {
             }
             .accessibilityIdentifier("beni-unut")
             .accessibilityHint("Bu telefondaki takip bilgilerinizi siler")
+            .confirmationDialog("Bu telefon sizi unutsun mu?", isPresented: $unutSorusu, titleVisibility: .visible) {
+                Button("Beni unut", role: .destructive) { hafiza.unut() }
+                Button("Vazgeç", role: .cancel) {}
+            } message: {
+                Text("Takip kodunuz ve pasaport numaranız bu telefondan silinir, bildirim gelmez. Dilediğinizde yeniden sorgulayabilirsiniz.")
+            }
         }
         .padding(.top, 4)
+        .padding(.bottom, 24)
     }
 
     private func bildirimDurumunuOku() async {

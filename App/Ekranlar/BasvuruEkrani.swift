@@ -28,6 +28,11 @@ struct BasvuruEkrani: View {
     @State private var gonderildi: String?
     @State private var sonGonderim: Date?
     @State private var hazir = false
+    /// Klavyedeki "sonraki" tuşu sıradaki kutuya geçirir: açık klavyenin hemen
+    /// üstündeki kutuya dokunmak zor (klavye çubuğu araya giriyor).
+    @FocusState private var odak: Kutu?
+
+    private enum Kutu: Hashable { case ad, soyad, telefon, eposta }
 
     var body: some View {
         ScrollViewReader { kaydir in
@@ -125,6 +130,9 @@ struct BasvuruEkrani: View {
                     .textContentType(.givenName)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
+                    .focused($odak, equals: .ad)
+                    .submitLabel(.next)
+                    .onSubmit { odak = .soyad }
                     .kutu()
                     .onChange(of: form.ad) { _, yeni in
                         let t = Harf.adSoyad(yeni, ulke: form.ulke)
@@ -139,6 +147,9 @@ struct BasvuruEkrani: View {
                     .textContentType(.familyName)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
+                    .focused($odak, equals: .soyad)
+                    .submitLabel(.next)
+                    .onSubmit { odak = .telefon }
                     .kutu()
                     .onChange(of: form.soyad) { _, yeni in
                         let t = Harf.adSoyad(yeni, ulke: form.ulke)
@@ -152,6 +163,7 @@ struct BasvuruEkrani: View {
                     .accessibilityLabel("Telefon")
                     .textContentType(.telephoneNumber)
                     .keyboardType(.phonePad)
+                    .focused($odak, equals: .telefon)
                     .kutu()
             }
             .id(BasvuruAlani.telefon)
@@ -163,6 +175,8 @@ struct BasvuruEkrani: View {
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($odak, equals: .eposta)
+                    .submitLabel(.done)
                     .kutu()
             }
             .id(BasvuruAlani.eposta)
