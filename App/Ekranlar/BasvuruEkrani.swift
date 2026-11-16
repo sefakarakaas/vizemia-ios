@@ -7,15 +7,20 @@ struct BasvuruEkrani: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
 
+    /// Takvimden seçilen tarihler. Boş bırakılabildikleri için "var mı" ile birlikte tutulur.
+    private struct Tarihler: Equatable {
+        var seyahatVar = false
+        var seyahat = Date()
+        var dogumVar = false
+        var dogum = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
+        var gecerlilikVar = false
+        var gecerlilik = Calendar.current.date(byAdding: .year, value: 5, to: Date()) ?? Date()
+    }
+
     @State private var form = BasvuruFormu()
     @State private var arama = AramaSecimi(mod: .saat)
+    @State private var tarihler = Tarihler()
     @State private var acikti = false
-    @State private var seyahatVar = false
-    @State private var seyahatTarihi = Date()
-    @State private var dogumVar = false
-    @State private var dogumTarihi = Calendar.current.date(byAdding: .year, value: -30, to: Date()) ?? Date()
-    @State private var gecerlilikVar = false
-    @State private var gecerlilikTarihi = Calendar.current.date(byAdding: .year, value: 5, to: Date()) ?? Date()
     @State private var pasaportAcik = false
     @State private var ulkeSeciliyor = false
     @State private var hata: FormHatasi?
@@ -55,7 +60,7 @@ struct BasvuruEkrani: View {
                 }
                 .padding(Tema.bosluk)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .formKlavyesi()
         }
         .ekranZemini()
         .navigationTitle("Başvur")
@@ -79,9 +84,18 @@ struct BasvuruEkrani: View {
             ulkeyiUygula()
         }
         .onChange(of: gezinti.basvuruUlke) { _, _ in ulkeyiUygula() }
+        // Müşteri bir şeyi düzeltince eski hata satırı kalmasın.
+        .onChange(of: form) { _, _ in hata = nil }
+        .onChange(of: arama) { _, _ in hata = nil }
+        .onChange(of: tarihler) { _, _ in hata = nil }
     }
 
     // MARK: - Bölümler
+
+    /// Hata bu alandaysa metni; alanın hemen altında gösterilir (ekran oraya kayar).
+    private func alanHatasi(_ alan: BasvuruAlani) -> String? {
+        hata?.alan == alan ? hata?.mesaj : nil
+    }
 
     /// Ekran okuyucu için: seçim kutusunun ne olduğu ve seçili değer.
     private var ulkeEtiketi: String {
@@ -104,7 +118,7 @@ struct BasvuruEkrani: View {
 
     private var kisi: some View {
         Bolum(baslik: "1. Siz") {
-            Alan(etiket: "Adınız *") {
+            Alan(etiket: "Adınız *", hata: alanHatasi(.ad)) {
                 TextField("", text: $form.ad)
                     .accessibilityIdentifier("basvuru-ad")
                     .accessibilityLabel("Adınız")
@@ -118,7 +132,7 @@ struct BasvuruEkrani: View {
                     }
             }
             .id(BasvuruAlani.ad)
-            Alan(etiket: "Soyadınız *", yardim: "Pasaportunuzda yazdığı gibi, Latin harfleriyle.") {
+            Alan(etiket: "Soyadınız *", yardim: "Pasaportunuzda yazdığı gibi, Latin harfleriyle.", hata: alanHatasi(.soyad)) {
                 TextField("", text: $form.soyad)
                     .accessibilityIdentifier("basvuru-soyad")
                     .accessibilityLabel("Soyadınız")
@@ -132,7 +146,7 @@ struct BasvuruEkrani: View {
                     }
             }
             .id(BasvuruAlani.soyad)
-            Alan(etiket: "Telefon *") {
+            Alan(etiket: "Telefon *", hata: alanHatasi(.telefon)) {
                 TextField("05xx xxx xx xx", text: $form.telefon)
                     .accessibilityIdentifier("basvuru-telefon")
                     .accessibilityLabel("Telefon")
@@ -141,7 +155,7 @@ struct BasvuruEkrani: View {
                     .kutu()
             }
             .id(BasvuruAlani.telefon)
-            Alan(etiket: "E-posta", istegeBagli: true) {
+            Alan(etiket: "E-posta", istegeBagli: true, hata: alanHatasi(.eposta)) {
                 TextField("", text: $form.eposta)
                     .accessibilityIdentifier("basvuru-eposta")
                     .accessibilityLabel("E-posta")
@@ -157,7 +171,7 @@ struct BasvuruEkrani: View {
 
     private var seyahat: some View {
         Bolum(baslik: "2. Seyahatiniz") {
-            Alan(etiket: "Gidilecek ülke *") {
+            Alan(etiket: "Gidilecek ülke *", hata: alanHatasi(.ulke)) {
                 Button {
                     ulkeSeciliyor = true
                 } label: {
@@ -179,7 +193,7 @@ struct BasvuruEkrani: View {
             }
             .id(BasvuruAlani.ulke)
 
-            Alan(etiket: "Vize türü *") {
+            Alan(etiket: "Vize türü *", hata: alanHatasi(.vizeTuru)) {
                 Menu {
                     ForEach(VizeTuru.hepsi) { t in
                         Button(t.ad) { form.vizeTuru = t.id }
@@ -202,8 +216,8 @@ struct BasvuruEkrani: View {
             }
             .id(BasvuruAlani.vizeTuru)
 
-            Alan(etiket: "Tahmini seyahat tarihi", yardim: "Kesin olmasa da olur.") {
-                TarihSatiri(secili: $seyahatVar, tarih: $seyahatTarihi, aralik: Date()...Date.distantFuture, bos: "Tarih seçin")
+            Alan(etiket: "Tahmini seyahat tarihi", yardim: "Kesin olmasa da olur.", hata: alanHatasi(.seyahat)) {
+                TarihSatiri(secili: $tarihler.seyahatVar, tarih: $tarihler.seyahat, aralik: Date()...Date.distantFuture, bos: "Tarih seçin")
             }
             .id(BasvuruAlani.seyahat)
         }
@@ -229,10 +243,13 @@ struct BasvuruEkrani: View {
                     .background(Tema.uyariZemin, in: RoundedRectangle(cornerRadius: Tema.koseKucuk, style: .continuous))
             }
 
-            if arama.mod == .saat {
-                SaatSecici(mesai: icerik.mesai, secim: $arama)
+            VStack(alignment: .leading, spacing: 10) {
+                if arama.mod == .saat {
+                    SaatSecici(mesai: icerik.mesai, secim: $arama)
+                }
+                if let h = alanHatasi(.arama) { AlanHatasi(metin: h) }
             }
-            Color.clear.frame(height: 0).id(BasvuruAlani.arama)
+            .id(BasvuruAlani.arama)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Size nasıl haber verelim? *").font(.subheadline.weight(.semibold)).foregroundStyle(Tema.lacivert)
@@ -242,6 +259,7 @@ struct BasvuruEkrani: View {
                 IsaretKutusu(secili: $form.kanallar.sms, metin: "SMS")
                 // E-posta kutusu adres yazılınca açılır: adresi olmayan bir yolu seçili göstermek "seçtim ama gelmedi" demek.
                 IsaretKutusu(secili: $form.kanallar.email, metin: "E-posta", etkin: Harf.epostaGecerli(Harf.eposta(form.eposta)))
+                if let h = alanHatasi(.kanal) { AlanHatasi(metin: h) }
             }
             .id(BasvuruAlani.kanal)
 
@@ -274,7 +292,7 @@ struct BasvuruEkrani: View {
             .buttonStyle(.plain)
 
             if pasaportAcik {
-                Alan(etiket: "Pasaport numarası") {
+                Alan(etiket: "Pasaport numarası", hata: alanHatasi(.pasaportNo)) {
                     TextField("U12345678", text: $form.pasaportNo)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
@@ -287,7 +305,7 @@ struct BasvuruEkrani: View {
                         }
                 }
                 .id(BasvuruAlani.pasaportNo)
-                Alan(etiket: "T.C. kimlik numarası") {
+                Alan(etiket: "T.C. kimlik numarası", hata: alanHatasi(.tckn)) {
                     TextField("", text: $form.tckn)
                         .accessibilityLabel("T.C. kimlik numarası")
                         .keyboardType(.numberPad)
@@ -299,12 +317,12 @@ struct BasvuruEkrani: View {
                         }
                 }
                 .id(BasvuruAlani.tckn)
-                Alan(etiket: "Doğum tarihi") {
-                    TarihSatiri(secili: $dogumVar, tarih: $dogumTarihi, aralik: Date.distantPast...Date(), bos: "Tarih seçin")
+                Alan(etiket: "Doğum tarihi", hata: alanHatasi(.dogum)) {
+                    TarihSatiri(secili: $tarihler.dogumVar, tarih: $tarihler.dogum, aralik: Date.distantPast...Date(), bos: "Tarih seçin")
                 }
                 .id(BasvuruAlani.dogum)
-                Alan(etiket: "Pasaport geçerlilik tarihi") {
-                    TarihSatiri(secili: $gecerlilikVar, tarih: $gecerlilikTarihi, aralik: Date()...Date.distantFuture, bos: "Tarih seçin")
+                Alan(etiket: "Pasaport geçerlilik tarihi", hata: alanHatasi(.gecerlilik)) {
+                    TarihSatiri(secili: $tarihler.gecerlilikVar, tarih: $tarihler.gecerlilik, aralik: Date()...Date.distantFuture, bos: "Tarih seçin")
                 }
                 .id(BasvuruAlani.gecerlilik)
             }
@@ -341,7 +359,8 @@ struct BasvuruEkrani: View {
                 let ulke = form.ulke, ad = form.ulkeAdi
                 form = BasvuruFormu()
                 form.ulke = ulke; form.ulkeAdi = ad
-                seyahatVar = false; dogumVar = false; gecerlilikVar = false; pasaportAcik = false
+                tarihler = Tarihler()
+                pasaportAcik = false
                 arama = AramaSecimi(mod: acikti ? .hemen : .saat, gun: icerik.mesai.uygunGunler().first ?? "")
                 gonderildi = nil
             }
@@ -373,14 +392,17 @@ struct BasvuruEkrani: View {
 
     private func gonder(_ kaydir: ScrollViewProxy) async {
         hata = nil
-        form.seyahat = seyahatVar ? Tr.isoGun(seyahatTarihi) : ""
-        form.dogum = pasaportAcik && dogumVar ? Tr.isoGun(dogumTarihi) : ""
-        form.gecerlilik = pasaportAcik && gecerlilikVar ? Tr.isoGun(gecerlilikTarihi) : ""
-        if !pasaportAcik { form.pasaportNo = ""; form.tckn = "" }
+        // Gönderilecek kopya: takvimden seçilen tarihler eklenir, kapalı pasaport
+        // bölümü boş gider. Ekrandaki form değişmez (değişseydi hata satırı silinirdi).
+        var f = form
+        f.seyahat = tarihler.seyahatVar ? Tr.isoGun(tarihler.seyahat) : ""
+        f.dogum = pasaportAcik && tarihler.dogumVar ? Tr.isoGun(tarihler.dogum) : ""
+        f.gecerlilik = pasaportAcik && tarihler.gecerlilikVar ? Tr.isoGun(tarihler.gecerlilik) : ""
+        if !pasaportAcik { f.pasaportNo = ""; f.tckn = "" }
 
-        if let h = form.hata(arama: arama) {
-            hata = h
+        if let h = f.hata(arama: arama) {
             if h.alan == .pasaportNo || h.alan == .tckn || h.alan == .dogum || h.alan == .gecerlilik { pasaportAcik = true }
+            hata = h
             withAnimation { kaydir.scrollTo(h.alan ?? .ad, anchor: .center) }
             return
         }
@@ -391,7 +413,7 @@ struct BasvuruEkrani: View {
         gonderiliyor = true
         defer { gonderiliyor = false }
         do {
-            let kimlik = try await FirestoreIstemci().ekle(koleksiyon: "applicationRequests", alanlar: form.alanlar(arama: arama))
+            let kimlik = try await FirestoreIstemci().ekle(koleksiyon: "applicationRequests", alanlar: f.alanlar(arama: arama))
             icerik.bildir(tur: "basvuru", kimlik: kimlik)
             sonGonderim = Date()
             withAnimation { gonderildi = arama.metin }
@@ -535,7 +557,7 @@ struct SaatSecici: View {
                     }
                     .buttonStyle(.plain)
 
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 8)], spacing: 8) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
                         ForEach(grup.dilimler, id: \.self) { m in
                             let acik = secim.dilimler.contains(m)
                             Button("\(Mesai.hhmm(m))–\(Mesai.hhmm(m + 30))") {

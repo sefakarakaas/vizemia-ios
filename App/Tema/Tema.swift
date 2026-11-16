@@ -132,10 +132,12 @@ struct SecimKutusu: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.subheadline.weight(.semibold))
+            .font(.footnote.weight(.semibold).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
             .foregroundStyle(secili ? Color.white : Tema.lacivert)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .padding(.horizontal, 6)
             .frame(maxWidth: .infinity)
             .background(secili ? Tema.lacivert : Tema.zemin, in: RoundedRectangle(cornerRadius: Tema.koseKucuk, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Tema.koseKucuk, style: .continuous).stroke(secili ? Tema.lacivert : Tema.soluk, lineWidth: 1.5))
@@ -150,6 +152,8 @@ struct Alan<Govde: View>: View {
     var etiket: String
     var istegeBagli = false
     var yardim: String? = nil
+    /// Bu alandaki doğrulama hatası; varsa yardım metninin yerine gösterilir.
+    var hata: String? = nil
     @ViewBuilder var icerik: () -> Govde
 
     var body: some View {
@@ -159,13 +163,45 @@ struct Alan<Govde: View>: View {
                 if istegeBagli { Text("(isteğe bağlı)").font(.caption).foregroundStyle(Tema.govde) }
             }
             icerik()
-            if let y = yardim { Text(y).font(.caption).foregroundStyle(Tema.govde) }
+            if let h = hata {
+                AlanHatasi(metin: h)
+            } else if let y = yardim {
+                Text(y).font(.caption).foregroundStyle(Tema.govde)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
+/// Alanın hemen altındaki kısa hata satırı.
+struct AlanHatasi: View {
+    var metin: String
+
+    var body: some View {
+        Label(metin, systemImage: "exclamationmark.circle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(Tema.olumsuz)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 extension View {
+    /// Form ekranlarında klavye: kaydırınca kapanır ve üstünde "Bitti" düğmesi
+    /// olur. Rakam klavyesinde kapatma tuşu yok; bu olmadan klavye ekranın alt
+    /// yarısını ve sekme çubuğunu kapatıp kalıyor.
+    func formKlavyesi() -> some View {
+        self.scrollDismissesKeyboard(.immediately)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Bitti") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+    }
+
     /// Metin kutusunun çerçevesi.
     func kutu() -> some View {
         self.padding(.horizontal, 14)

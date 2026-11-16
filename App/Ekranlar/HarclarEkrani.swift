@@ -8,7 +8,6 @@ struct HarclarEkrani: View {
 
     @State private var tutar = "90"
     @State private var para = "EUR"
-    @FocusState private var tutarOdakta: Bool
 
     private struct Para: Identifiable { let id: String; let ad: String }
     private struct Hazir: Identifiable { let id: String; let tutar: String; let para: String }
@@ -46,7 +45,7 @@ struct HarclarEkrani: View {
             }
             .padding(Tema.bosluk)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .formKlavyesi()
         .ekranZemini()
         .navigationTitle("Harç & Kur")
         .navigationBarTitleDisplayMode(.inline)
@@ -56,12 +55,6 @@ struct HarclarEkrani: View {
             while !Task.isCancelled {
                 await icerik.canliKur()
                 try? await Task.sleep(for: .seconds(300))
-            }
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Bitti") { tutarOdakta = false }
             }
         }
     }
@@ -89,7 +82,6 @@ struct HarclarEkrani: View {
                 TextField("Tutar", text: $tutar)
                     .keyboardType(.decimalPad)
                     .font(.title3.weight(.bold).monospacedDigit())
-                    .focused($tutarOdakta)
                     .kutu()
                 Picker("Para birimi", selection: $para) {
                     ForEach(paralar) { p in Text(p.ad).tag(p.id) }

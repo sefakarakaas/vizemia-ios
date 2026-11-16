@@ -50,7 +50,7 @@ struct TakipEkrani: View {
             }
             .padding(Tema.bosluk)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .formKlavyesi()
         .ekranZemini()
         .navigationTitle("Takip")
         .navigationBarTitleDisplayMode(.inline)

@@ -283,7 +283,7 @@ struct DestekEkrani: View {
             }
             .padding(Tema.bosluk)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .formKlavyesi()
         .ekranZemini()
         .navigationTitle("Destek")
         .navigationBarTitleDisplayMode(.inline)
