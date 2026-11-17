@@ -1,7 +1,7 @@
 // App Store Connect API anahtarını dener; gizli değerleri YAZDIRMAZ.
 // Ortam: ASC_KEY_ID, ASC_ISSUER_ID, APPLE_TEAM_ID, ASC_KEY_P8.
 // Her denetim için "tamam" ya da sorunun ne olduğunu yazar; sorun varsa 1 ile çıkar.
-import { createPrivateKey, sign } from 'node:crypto';
+import { createPrivateKey, sign, createHash, createPublicKey } from 'node:crypto';
 
 const BUNDLE = 'com.vizemia.app';
 const env = (ad) => String(process.env[ad] || '');
@@ -40,6 +40,12 @@ try {
 } catch (e) {
   hata(`ASC_KEY_P8 okunamadı: dosya eksik ya da bozuk kopyalanmış (${e.code || e.message})`);
 }
+
+// Karşılaştırma için kısa parmak izleri. Key ID ve Issuer ID tek başına gizli
+// değil (.p8 olmadan işe yaramaz); yine de değerin kendisi değil özeti yazılır.
+// Kullanıcının bildiği değerin özetiyle karşılaştırılıp yanlış girilen bulunur.
+const ozet = (x) => createHash('sha256').update(x).digest('hex').slice(0, 8);
+console.log(`Parmak izleri: ASC_KEY_ID=${ozet(keyId)} ASC_ISSUER_ID=${ozet(issuer.toLowerCase())}${anahtar ? ` P8_ACIK_ANAHTAR=${ozet(createPublicKey(anahtar).export({ type: 'spki', format: 'der' }))}` : ''}`);
 
 if (!anahtar || sorun) {
   console.log('Biçim sorunları düzeltilmeden Apple\'a sorulmadı.');
