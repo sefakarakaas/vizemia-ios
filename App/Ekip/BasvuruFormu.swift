@@ -14,8 +14,8 @@ struct BasvuruFormuEkrani: View {
     @State private var sorun: String?
     @State private var basari = 0
 
-    init(kimlik: String?, talepYolu: String?) {
-        _veri = State(initialValue: BasvuruFormuVerisi(kimlik: kimlik, talepYolu: talepYolu))
+    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil) {
+        _veri = State(initialValue: BasvuruFormuVerisi(kimlik: kimlik, talepYolu: talepYolu, arsivId: arsivId))
     }
 
     private var ulkeAdi: String { icerik.akis.tumUlkeler.first { $0.slug == veri.ulke }?.ad ?? "" }
@@ -48,6 +48,13 @@ struct BasvuruFormuEkrani: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let t = veri.talep {
                     Label("\(t.ad) talebinden dolduruldu. Kaydedince talep \"onaylandı\" olur.", systemImage: "phone.arrow.down.left")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Tema.mavi)
+                        .kartSoluk()
+                }
+                if veri.arsivId != nil {
+                    Label("Arşivden: ad, soyad, telefon, e-posta ve ülke dolduruldu. TCKN, pasaport ve evraklar silindiği için yeniden girilmeli.",
+                          systemImage: "archivebox")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Tema.mavi)
                         .kartSoluk()

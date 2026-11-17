@@ -8,6 +8,8 @@ import VizeMiaCekirdek
 final class BasvuruFormuVerisi {
     let kimlik: String?
     let talepYolu: String?
+    /// Müşteri arşivinden yeniden başvuru: arşiv kaydının kimliği.
+    let arsivId: String?
 
     var ulke = ""
     var randevu: Date?
@@ -29,9 +31,10 @@ final class BasvuruFormuVerisi {
     private(set) var hata: String?
     var kaydediliyor = false
 
-    init(kimlik: String?, talepYolu: String?) {
+    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil) {
         self.kimlik = kimlik
         self.talepYolu = talepYolu
+        self.arsivId = arsivId
     }
 
     var duzenleme: Bool { kimlik != nil }
@@ -44,6 +47,28 @@ final class BasvuruFormuVerisi {
             let r = EkipFormu.tohum(t, ulkeler: ulkeler)
             ulke = r.ulke; degerler = r.degerler; korunan = r.korunan
             kampanyaIzni = r.korunan["kampanyaIzni"]?.mantikDegeri == true
+        }
+        if let a = arsivId {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { degerler = ["firstName": "KEMAL", "lastName": "YILDIZ"]; hazir = true; return }
+            #endif
+            do {
+                let f = try await ekip.istemci()
+                if let belge = try await f.belge("musteriArsivi/\(a)") {
+                    let k = ArsivKaydi(kimlik: a, alanlar: belge)
+                    let t = MusteriArsivi.tohum(k, ulkeler: ulkeler)
+                    ulke = t.ulke; degerler = t.degerler
+                    if let c = ekip.calisan {
+                        _ = try? await f.isle([.olustur(yol: "audit/\(FirestoreIstemci.yeniKimlik())",
+                                                       alanlar: IslemKaydi.alanlar(eylem: "arsiv.geriAl", hedef: a,
+                                                                                  ayrinti: "\(k.adSoyad) \(k.takipKodu)".kirpik, calisan: c),
+                                                       zaman: ["at"])])
+                    }
+                }
+            } catch {
+                hata = "Arşiv kaydı okunamadı."
+                return
+            }
         }
         guard let id = kimlik else { hazir = true; return }
         #if DEBUG

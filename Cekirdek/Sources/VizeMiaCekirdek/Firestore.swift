@@ -76,7 +76,7 @@ public indirect enum FSDeger: Equatable {
     }
 
     /// "2026-11-05T09:41:16.458Z" ya da kesirsiz "2026-11-05T09:41:16Z".
-    static func zamanOku(_ s: String) -> Date? {
+    public static func zamanOku(_ s: String) -> Date? {
         let kesirli = ISO8601DateFormatter()
         kesirli.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         if let d = kesirli.date(from: s) { return d }
@@ -87,7 +87,7 @@ public indirect enum FSDeger: Equatable {
         return duz.date(from: s.degistir("\\.[0-9]+", ""))
     }
 
-    static func zamanYaz(_ d: Date) -> String {
+    public static func zamanYaz(_ d: Date) -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime]
         return f.string(from: d)

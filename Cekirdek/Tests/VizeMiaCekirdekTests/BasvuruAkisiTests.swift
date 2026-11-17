@@ -500,3 +500,29 @@ final class TalepTohumTests: XCTestCase {
         XCTAssertEqual(Talep.onayAlanlari(basvuruId: "app1", uid: "u")["status"], .metin("approved"))
     }
 }
+
+final class MusteriArsiviTests: XCTestCase {
+    func k(_ id: String, _ ad: String, _ soyad: String, tel: String = "", eposta: String = "", gun: Double = 0, kod: String = "") -> ArsivKaydi {
+        ArsivKaydi(kimlik: id, alanlar: ["ad": .metin(ad), "soyad": .metin(soyad), "telefon": .metin(tel), "eposta": .metin(eposta),
+                                        "takipKodu": .metin(kod), "ulkeAdi": .metin("Almanya"),
+                                        "silinme": .zaman(Date(timeIntervalSince1970: 1_790_000_000 + gun * 86_400)),
+                                        "odemeler": .dizi([.harita(["tarih": .metin("2026-01-02"), "tutar": .tam(100), "paraBirimi": .metin("EUR")])])])
+    }
+
+    func testAramaVeGruplar() {
+        XCTAssertEqual(MusteriArsivi.aramaAnahtari("0532 111 22 33"), "+905321112233")
+        XCTAssertEqual(MusteriArsivi.aramaAnahtari(" Ali@Ornek.com "), "ali@ornek.com")
+        XCTAssertEqual(MusteriArsivi.aramaAnahtari("  Ayşe   Nur "), "ayşe nur")
+        let a = k("1", "YARGIN", "ÇELİK", tel: "+905321112233", kod: "2026-011234")
+        XCTAssertTrue(MusteriArsivi.eslesir(a, "yargin celik"))
+        XCTAssertTrue(MusteriArsivi.eslesir(a, "0532 111"))
+        XCTAssertTrue(MusteriArsivi.eslesir(a, "011234"))
+        XCTAssertFalse(MusteriArsivi.eslesir(a, "mehmet"))
+        let g = MusteriArsivi.gruplar([a, k("2", "Ali", "Veli", eposta: "a@b.co", gun: 5), k("3", "YARGIN", "ÇELİK", tel: "+905321112233", gun: 9)])
+        XCTAssertEqual(g.map { $0.map(\.id) }, [["3", "1"], ["2"]], "aynı telefon bir arada, en yeni başta")
+        let t = MusteriArsivi.toplam([(100, "EUR"), (50.5, "EUR"), (nil, "TRY"), (4500, "TRY")])
+        XCTAssertEqual(t.map(\.0), ["EUR", "TRY"])
+        XCTAssertEqual(t.first?.1, 150.5)
+        XCTAssertEqual(MusteriArsivi.tohum(a, ulkeler: []).degerler["firstName"], "YARGIN")
+    }
+}

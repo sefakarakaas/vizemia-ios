@@ -122,6 +122,10 @@ public enum RandevuKurali {
         public var sehir: String
         public var yer: String
         public var harita: String
+
+        public init(saat: String, merkez: String, sehir: String, yer: String, harita: String) {
+            self.saat = saat; self.merkez = merkez; self.sehir = sehir; self.yer = yer; self.harita = harita
+        }
     }
 
     /// Kaydedilecek alanlar: temsilcilikte şehir listeden; harita ayardan, yoksa listedeki arama bağlantısı.
