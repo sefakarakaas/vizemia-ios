@@ -31,9 +31,11 @@ public struct Akis: Decodable, Equatable {
     public var evrak: EvrakKatalogu?
     /// Randevu kağıdı girişinin seçenekleri (ekip ekranı). Eski dosyada yok.
     public var randevu: RandevuSecenekleri?
+    /// Başvuru formunun şeması (ekip ekranı: yeni başvuru / düzenle). Eski dosyada yok.
+    public var form: FormSemasi?
     public var sayfalar: [Sayfa]
 
-    enum Anahtar: String, CodingKey { case surum, uretim, iletisim, servisUrl, mesai, surec, kitalar, sss, harclar, evrak, randevu, sayfalar }
+    enum Anahtar: String, CodingKey { case surum, uretim, iletisim, servisUrl, mesai, surec, kitalar, sss, harclar, evrak, randevu, form, sayfalar }
 
     public init(from decoder: Decoder) throws {
         let c = Coz(c: try decoder.container(keyedBy: Anahtar.self))
@@ -48,6 +50,7 @@ public struct Akis: Decodable, Equatable {
         harclar = c.dizi(.harclar)
         evrak = c.nesne(.evrak)
         randevu = c.nesne(.randevu)
+        form = c.nesne(.form)
         sayfalar = c.dizi(.sayfalar)
     }
 

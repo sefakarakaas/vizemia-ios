@@ -119,6 +119,20 @@ final class EkranGoruntuleri: XCTestCase {
             bekle(0.6)
             cek("ekip-basvuru-\(i)")
         }
+
+        // Yeni başvuru formu (listeye dön → "+").
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let yeni = app.buttons["Yeni başvuru"].firstMatch
+        XCTAssertTrue(yeni.waitForExistence(timeout: 8), "Yeni başvuru düğmesi yok")
+        yeni.tap()
+        XCTAssertTrue(metin("Başvurulan ülke").waitForExistence(timeout: 8), "Form açılmadı")
+        bekle(1)
+        cek("ekip-yeni-basvuru")
+        for i in 2...4 {
+            surukle(0.85, 0.25)
+            bekle(0.6)
+            cek("ekip-yeni-basvuru-\(i)")
+        }
     }
 
     func testEkranlar() {

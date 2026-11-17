@@ -35,6 +35,9 @@ public struct Basvuru: Equatable, Identifiable {
     public var konsTakipKodu: String
     public var konsTakipZamani: Date?
     public var randevuMerkezi: String
+    /// Konsolosluk / büyükelçiliğin adı (başvuru merkezinde boş) ve harita bağlantısı.
+    public var randevuYeriAdi: String
+    public var randevuHarita: String
     public var grupId: String
     public var grupAdi: String
     /// Telefonda hızlı açılan başvurunun eksik alanları ("Bilgileri kontrol edin").
@@ -68,6 +71,8 @@ public struct Basvuru: Equatable, Identifiable {
         konsTakipKodu = m("konsTakipKodu")
         konsTakipZamani = a["konsTakipTarih"]?.zamanDegeri
         randevuMerkezi = m("randevuMerkezi")
+        randevuYeriAdi = m("randevuYeri")
+        randevuHarita = m("randevuHarita")
         grupId = m("grupId"); grupAdi = m("grupAdi")
         kontrolNotu = m("reviewNote")
     }

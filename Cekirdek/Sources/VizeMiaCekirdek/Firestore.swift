@@ -287,6 +287,10 @@ public struct FirestoreIstemci {
         /// Belgeyi baştan yazar (varsa üzerine): panelin `batch.set`.
         case yaz(yol: String, alanlar: [String: FSDeger], zaman: [String] = [])
         case sil(yol: String)
+        /// Dizi alanına eksik öğeleri ekler (belge yoksa oluşturur): panelin `arrayUnion` + merge.
+        case diziyeEkle(yol: String, alan: String, degerler: [FSDeger])
+        /// Dizi alanından öğeleri çıkarır: panelin `arrayRemove` + merge.
+        case diziden(yol: String, alan: String, degerler: [FSDeger])
     }
 
     /// Yazımları tek istekte (documents:commit) gönderir.
@@ -325,6 +329,13 @@ public struct FirestoreIstemci {
             return g
         case let .sil(yol):
             return ["delete": "\(kok)/\(yol)"]
+        case let .diziyeEkle(yol, alan, degerler), let .diziden(yol, alan, degerler):
+            let islem = { if case .diziyeEkle = y { return "appendMissingElements" } else { return "removeAllFromArray" } }()
+            return [
+                "update": ["name": "\(kok)/\(yol)", "fields": [String: Any]()],
+                "updateMask": ["fieldPaths": [String]()],
+                "updateTransforms": [["fieldPath": FirestoreIstemci.alanYolu([alan]), islem: ["values": degerler.map { $0.json }]]],
+            ]
         }
     }
 

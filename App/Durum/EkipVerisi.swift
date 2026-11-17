@@ -26,6 +26,8 @@ final class EkipVerisi {
     private var takvimYuklemesi: Date?
     /// Başvurular listesi: ekrandan çıkıp girince yeniden okunmasın diye burada.
     let basvurular = BasvuruListesiVerisi()
+    /// Bir ekrandan ötekine taşınan bilgi (ör. kaydedilen formdan sonra ayrıntıda gösterilir).
+    var sonMesaj: String?
 
     /// Firestore'un ücretsiz planında günde 50.000 belge okuma var ve panel,
     /// site ve zamanlanmış işler de aynı kotayı kullanıyor. Her okunan belge

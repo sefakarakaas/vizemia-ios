@@ -17,6 +17,10 @@ final class IcerikDeposu {
     /// Uygulamayla gelen evrak kataloğu: siteden inen dosya eskiyse (alan yoksa) bu kullanılır.
     private let gomuluEvrak: EvrakKatalogu?
     private let gomuluRandevu: RandevuSecenekleri?
+    private let gomuluForm: FormSemasi?
+
+    /// Başvuru formunun şeması (ekip: yeni başvuru / düzenle).
+    var formSemasi: FormSemasi? { akis.form ?? gomuluForm }
 
     /// Randevu kağıdı girişinin seçenekleri (merkezler, iller, saatler, temsilcilikler).
     var randevu: RandevuSecenekleri {
@@ -44,6 +48,7 @@ final class IcerikDeposu {
         let gomulu: Akis? = IcerikKaynagi.gomulu(.uygulama)
         gomuluEvrak = gomulu?.evrak
         gomuluRandevu = gomulu?.randevu
+        gomuluForm = gomulu?.form
         let kayitli: Akis? = kaynak.kayitli(.uygulama)
         if let k = kayitli, k.surum == 1, !k.sayfalar.isEmpty, k.uretim >= (gomulu?.uretim ?? "") {
             akis = k

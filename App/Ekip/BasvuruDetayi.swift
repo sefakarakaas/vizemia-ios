@@ -68,8 +68,16 @@ struct BasvuruDetayi: View {
         .navigationTitle(veri.basvuru?.adSoyad ?? "Başvuru")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            if let m = ekipVerisi.sonMesaj { ekipVerisi.sonMesaj = nil; goster(nil, tamam: m) }
             if veri.basvuru == nil { await veri.yukle(ekip) }
             if hedef.isEmpty { hedef = veri.basvuru?.statuId ?? "" }
+        }
+        .toolbar {
+            if ekip.yapabilir("app.edit") && ekip.yapabilir("app.sensitive"), veri.basvuru != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: EkipRota.basvuruDuzenle(kimlik)) { Text("Düzenle") }
+                }
+            }
         }
         .overlay(alignment: .top) { bildiriGorunumu }
         .animation(Hareket.yay, value: bildiri)
@@ -532,10 +540,10 @@ struct BasvuruDetayi: View {
                 Button {
                     UIPasteboard.general.string = b.takipKodu
                     goster(nil, tamam: "Takip kodu kopyalandı.")
-                } label: { Label("Kodu kopyala", systemImage: "doc.on.doc") }
+                } label: { Label("Kopyala", systemImage: "doc.on.doc").lineLimit(1) }
                     .buttonStyle(IkincilDugme())
                 ShareLink(item: mesaj) {
-                    Label("Müşteriye gönder", systemImage: "square.and.arrow.up")
+                    Label("Müşteriye gönder", systemImage: "square.and.arrow.up").lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .buttonStyle(AnaDugme(renk: Tema.turkuaz))
             }

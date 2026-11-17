@@ -12,6 +12,8 @@ enum EkipRota: Hashable {
     case takvim
     case basvurular
     case basvuru(String)        // başvuru kimliği
+    case yeniBasvuru(talep: String?)   // talep yolu verilirse form talepten dolu gelir
+    case basvuruDuzenle(String)
     case bolum(String)          // ana sayfa kutusu: "musteriler", "kasa" …
     case yakinda(String)        // henüz uygulamada olmayan panel ekranı
 }
@@ -67,11 +69,20 @@ struct EkipKok: View {
                     case .takvim: TakvimEkrani()
                     case .basvurular: BasvurularEkrani()
                     case .basvuru(let id): BasvuruDetayi(kimlik: id)
+                    case .yeniBasvuru(let talep): BasvuruFormuEkrani(kimlik: nil, talepYolu: talep)
+                    case .basvuruDuzenle(let id): BasvuruFormuEkrani(kimlik: id, talepYolu: nil)
                     case .bolum(let id): BolumEkrani(id: id)
                     case .yakinda(let ad): YakindaEkrani(ad: ad)
                     }
                 }
         }
+        // Kaydedilen formun yerine ayrıntısı açılsın (geri dönünce form değil liste gelsin).
+        .environment(\.ekipYerDegistir, { rota in
+            var p = yollar[s] ?? []
+            if !p.isEmpty { p.removeLast() }
+            p.append(rota)
+            yollar[s] = p
+        })
     }
 }
 
@@ -149,5 +160,17 @@ struct YakindaEkrani: View {
         .ekranZemini()
         .navigationTitle(ad)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Açık ekranın yerine başka bir ekip ekranı koyar (ör. kaydedilen form → başvuru ayrıntısı).
+private struct EkipYerDegistirAnahtari: EnvironmentKey {
+    static let defaultValue: (EkipRota) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var ekipYerDegistir: (EkipRota) -> Void {
+        get { self[EkipYerDegistirAnahtari.self] }
+        set { self[EkipYerDegistirAnahtari.self] = newValue }
     }
 }

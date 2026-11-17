@@ -115,6 +115,9 @@ final class BasvuruListesiVerisi {
 
     func bulunanlariTemizle() { bulunanlar = nil; hata = nil }
 
+    /// Yeni başvuru açıldı: liste bir sonraki açılışta yeniden okunsun.
+    func eskit() { sonYukleme = nil }
+
     /// Ayrıntıda değişen başvuruyu listede de değiştirir (yeniden okumadan).
     func guncelle(_ b: Basvuru) {
         if let i = satirlar.firstIndex(where: { $0.kimlik == b.kimlik }), satirlar[i] != b { satirlar[i] = b }

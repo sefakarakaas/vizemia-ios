@@ -83,6 +83,16 @@ struct BasvurularEkrani: View {
             }
         }
         .navigationTitle("Başvurular")
+        .toolbar {
+            if ekip.yapabilir("app.create") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink(value: EkipRota.yeniBasvuru(talep: nil)) {
+                        Image(systemName: "plus.circle.fill").font(.title3)
+                    }
+                    .accessibilityLabel("Yeni başvuru")
+                }
+            }
+        }
         .task {
             // Ekrana dönülünce yeniden okunmaz (okuma kotası); süzgeç kaldığı yerden.
             if suzgec != veri.suzgec { suzgec = veri.suzgec }

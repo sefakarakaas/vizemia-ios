@@ -219,7 +219,8 @@ final class BasvuruAkisiTests: XCTestCase {
                                     saklamaGun: 60, eposta: nil, sms: nil, smsGonder: false, iletisim: nil)
         let yollar = r.yazimlar.map { y -> String in
             switch y {
-            case let .guncelle(yol, _, _, _), let .olustur(yol, _, _), let .yaz(yol, _, _), let .sil(yol): return yol
+            case let .guncelle(yol, _, _, _), let .olustur(yol, _, _), let .yaz(yol, _, _), let .sil(yol),
+                 let .diziyeEkle(yol, _, _), let .diziden(yol, _, _): return yol
             }
         }
         XCTAssertEqual(yollar.count, 5)
@@ -416,5 +417,86 @@ final class RandevuTests: XCTestCase {
         let kanalsiz = BildirimPlani.planla(b, randevu: r, kayit: k, iletisim: MusteriIletisimi(form: ["phone": .metin("+49 151 1234567")]),
                                             ayar: BildirimAyari(belge: nil), mevcut: [], calisan: BasvuruAkisiTests.calisan, simdi: simdi)
         XCTAssertEqual(kanalsiz.atlanan, ["açık kanal yok"], "yabancı numaraya WhatsApp/SMS planlanmaz")
+    }
+}
+
+/// Ekibin başvuru formu: sitenin gerçek şemasıyla (uygulamayla gelen kopya).
+final class EkipFormuTests: XCTestCase {
+    var sema: FormSemasi!
+
+    override func setUpWithError() throws {
+        let a: Akis = try XCTUnwrap(IcerikKaynagi.gomulu(.uygulama))
+        sema = try XCTUnwrap(a.form)
+    }
+
+    func testAlanListesi() {
+        let genel = sema.panelAlanlari("almanya", kayitli: [:])
+        XCTAssertEqual(genel.first?.key, "firstName")
+        XCTAssertTrue(genel.contains { $0.key == "passportNo" && $0.required })
+        // ABD'nin hazır ayarı: AB aile üyesi soruları kapalı (kutucuk arkasında, zorunlu değil).
+        let abd = sema.panelAlanlari("abd", kayitli: [:])
+        let aile = abd.first { $0.key == "euFamSurname" }
+        XCTAssertEqual(aile?.kapali, true)
+        // Kayıtlı ayar hazırın üstüne yazar; ek soru "x_" önekiyle sona eklenir.
+        let ayar = UlkeFormu(alanlar: [
+            "hidden": .dizi([.metin("email")]), "required": .dizi([.metin("phone")]),
+            "extra": .dizi([.harita(["key": .metin("isyeri"), "label": .metin("İşyeri adı"), "type": .metin("select"),
+                                     "options": .dizi([.harita(["value": .metin("A"), "label": .metin("A")])])])]),
+        ])
+        let fr = sema.panelAlanlari("fransa", kayitli: ["fransa": ayar])
+        XCTAssertEqual(fr.first { $0.key == "email" }?.kapali, true)
+        XCTAssertEqual(fr.first { $0.key == "phone" }?.required, true)
+        XCTAssertEqual(fr.last?.key, "x_isyeri")
+        XCTAssertEqual(fr.last?.options.first?.label, "Seçiniz")
+        // Hollanda: portal şablonunun sırası.
+        XCTAssertGreaterThan(sema.panelAlanlari("hollanda", kayitli: [:]).count, genel.count)
+        XCTAssertTrue(sema.ilceler("ANKARA").contains("Çankaya"))
+        XCTAssertEqual(sema.iller(ilce: "çankaya"), ["ANKARA"])
+    }
+
+    func testDenetim() {
+        let alanlar = sema.panelAlanlari("almanya", kayitli: [:])
+        var d: [String: String] = ["firstName": "müller", "lastName": "straße", "passportNo": "u 12-345 678",
+                                   "email": " Ali@Ornek.COM ", "nationalId": "12345678901", "birthProvince": "ANKARA",
+                                   "passportIssued": "2020-02-29", "passportExpires": "2019-01-01"]
+        var r = EkipFormu.topla(d, alanlar: alanlar, acikKapalilar: [], ulke: "almanya", acilis: "2026-11-17", bugun: "2026-11-17")
+        XCTAssertEqual(r.veri["firstName"], .metin("MÜLLER"), "Almanya'da Ü kalır")
+        XCTAssertEqual(r.veri["lastName"], .metin("STRASSE"), "ß → SS")
+        XCTAssertEqual(r.veri["passportNo"], .metin("U12345678"))
+        XCTAssertEqual(r.veri["email"], .metin("ali@ornek.com"))
+        XCTAssertEqual(r.veri["birthPlace"], .metin("ANKARA"))
+        XCTAssertTrue(r.sorunlar.contains("T.C. kimlik numarası geçersiz."))
+        XCTAssertTrue(r.sorunlar.contains("Pasaport geçerlilik tarihi, veriliş tarihinden sonra olmalı."))
+        d = ["firstName": "ali", "lastName": "veli"]
+        r = EkipFormu.topla(d, alanlar: alanlar, acikKapalilar: [], ulke: "", acilis: "2026-11-18", bugun: "2026-11-17")
+        XCTAssertTrue(r.sorunlar.contains("Pasaport numarası ya da telefon gerekli (pasaportu sonradan girebilirsiniz)."))
+        XCTAssertTrue(r.sorunlar.contains("Ülke seçin."))
+        XCTAssertTrue(r.sorunlar.contains("Oluşturma tarihi ileri bir tarih olamaz."))
+        XCTAssertFalse(r.sorunlar.contains { $0.hasPrefix("Pasaport no zorunlu") }, "pasaport panelde isteğe bağlı")
+        XCTAssertEqual(EkipFormu.yilKaydir("2020-02-29", 10), "2030-02-28")
+        XCTAssertEqual(EkipFormu.yilKaydir("2030-05-07", -10), "2020-05-07")
+        XCTAssertTrue(EkipFormu.takipKodu(FSDeger.zamanOku("2026-03-05T10:00:00Z")!).eslesir("^2026-03[0-9]{4}$"))
+    }
+}
+
+final class TalepTohumTests: XCTestCase {
+    func testTaleptenForma() {
+        let t = Talep(tur: .geriArama, kimlik: "t1", alanlar: [
+            "name": .metin("Şükrü Can Öztürk"), "phone": .metin("+905321112233"), "country": .metin("almanya"),
+            "visaType": .metin("ziyaret"), "channels": .harita(["wa": .mantik(true), "sms": .mantik(false), "email": .mantik(false)]),
+            "kampanyaIzni": .mantik(true), "kampanyaIzniSurum": .metin("v1"),
+            "draft": .harita(["passportNo": .metin("U12345678"), "country": .metin("fransa"), "email": .metin("")]),
+        ])
+        let r = EkipFormu.tohum(t, ulkeler: ["almanya", "fransa"])
+        XCTAssertEqual(r.ulke, "fransa", "taslaktaki ülke önce")
+        // Panel gibi talebin kendi ülkesine göre (Almanya: Ö/Ü kalır, Ş → S).
+        XCTAssertEqual(r.degerler["firstName"], "SÜKRÜ CAN")
+        XCTAssertEqual(r.degerler["lastName"], "ÖZTÜRK")
+        XCTAssertEqual(r.degerler["passportNo"], "U12345678")
+        XCTAssertEqual(r.degerler["travelPurpose"], "Aile_Arkadasi")
+        XCTAssertNil(r.degerler["email"], "boş değer taşınmaz")
+        XCTAssertEqual(r.korunan["kampanyaIzni"], .mantik(true))
+        XCTAssertNotNil(r.korunan["channels"])
+        XCTAssertEqual(Talep.onayAlanlari(basvuruId: "app1", uid: "u")["status"], .metin("approved"))
     }
 }

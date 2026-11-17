@@ -192,6 +192,8 @@ public struct Talep: Equatable, Identifiable {
     public var kaynak: String
     public var silindi: Bool
     public var olusturma: Date?
+    /// Kaydın bütün alanları (başvuruya çevirirken taslak, ülke, izin …).
+    public var ham: [String: FSDeger] = [:]
 
     public var id: String { "\(tur.rawValue)/\(kimlik)" }
     public var yol: String { "\(tur.rawValue)/\(kimlik)" }
@@ -206,6 +208,7 @@ public struct Talep: Equatable, Identifiable {
     public init(tur: Tur, kimlik: String, alanlar a: [String: FSDeger]) {
         self.tur = tur
         self.kimlik = kimlik
+        self.ham = a
         let m = { (k: String) in a[k]?.metinDegeri ?? "" }
         if tur == .geriArama {
             ad = m("name")
@@ -289,6 +292,11 @@ public struct Talep: Equatable, Identifiable {
         ]
         if let s = iptalSebebi { a["cancelReason"] = .metin(String(s.prefix(200))) }
         return a
+    }
+
+    /// Başvuru açılınca talep kapanır: onaylandı + başvurunun kimliği (handledAt sunucu saatiyle).
+    public static func onayAlanlari(basvuruId: String, uid: String) -> [String: FSDeger] {
+        ["status": .metin("approved"), "applicationId": .metin(String(basvuruId.prefix(40))), "handledBy": .metin(uid)]
     }
 }
 

@@ -261,8 +261,12 @@ struct TalepDetayi: View {
                     }
                     .kart()
                 }
-                if t.acik && ekip.yapabilir("lead.manage") {
-                    Text("Başvuruya çevirme (onay) Başvurular bölümüyle birlikte uygulamaya gelecek; şimdilik panelden yapılır.")
+                if t.acik && ekip.yapabilir("lead.manage") && ekip.yapabilir("app.create") {
+                    NavigationLink(value: EkipRota.yeniBasvuru(talep: t.yol)) {
+                        Label("Başvuruya çevir", systemImage: "doc.badge.plus")
+                    }
+                    .buttonStyle(AnaDugme(renk: Tema.turkuaz))
+                    Text("Başvuru formu talepteki bilgilerle dolu açılır; kaydedince talep \"onaylandı\" olur.")
                         .font(.caption)
                         .foregroundStyle(Tema.silik)
                 }

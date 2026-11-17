@@ -38,6 +38,8 @@ final class EkipOturumu {
     /// Ayarlar → Randevu konumları (harita bağlantıları) ve otomatik bildirim ayarı.
     private(set) var konumlar = KonumAyari(belge: nil)
     private(set) var bildirimAyari = BildirimAyari(belge: nil)
+    /// Ayarlar → Ülke formları (settings/forms → countries): kapalı / zorunlu alanlar, ek sorular.
+    private(set) var ulkeFormlari: [String: UlkeFormu] = [:]
 
     private var oturum: KimlikIstemci.Oturum?
     private var arkaPlanaGecis: Date?
@@ -127,6 +129,7 @@ final class EkipOturumu {
             async let kasa = f.belge("settings/kasa")
             async let konum = f.belge("settings/konumlar")
             async let bildirim = f.belge("settings/bildirim")
+            async let formlar = f.belge("settings/forms")
             guard let e = try await emp else { durum = .yetkisiz; return }
             let c = Calisan(uid: o.uid, belge: e, izinBelgesi: try? await izin)
             guard c.aktif else { durum = .yetkisiz; calisan = c; return }
@@ -142,6 +145,8 @@ final class EkipOturumu {
             smsAyari = SmsAyari(belge: try? await sms)
             konumlar = KonumAyari(belge: (try? await konum) ?? nil)
             bildirimAyari = BildirimAyari(belge: (try? await bildirim) ?? nil)
+            let ulkeler = ((try? await formlar) ?? nil)?["countries"]?.haritaDegeri ?? [:]
+            ulkeFormlari = ulkeler.compactMapValues { $0.haritaDegeri.map { UlkeFormu(alanlar: $0) } }
             let k = ((try? await kasa) ?? nil)?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
             kasaServisUrl = k.range(of: "^https://script\\.google\\.com/macros/s/[\\w-]+/exec$", options: .regularExpression) != nil ? k : ""
             durum = .acik

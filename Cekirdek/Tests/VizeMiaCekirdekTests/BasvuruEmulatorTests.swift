@@ -374,4 +374,83 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(yeni.alanlar["randevuYeri"], .metin("ABD Büyükelçiliği (Ankara)"))
         XCTAssertEqual(yeni.alanlar["email"], .metin("ece@ornek.com"))
     }
+
+    func testYeniBasvuruVeDuzenleme() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("yeni\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("yeni\(ek)"), "displayName": .metin("Ezgi Danışman"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        let st: [(String, [String: FSDeger])] = [
+            ("potansiyel", statuBelgesi("Potansiyel Müşteri", musteri: "Görüşme aşamasında", sira: 10, silme: 60)),
+            ("randevu-takip", statuBelgesi("Randevu Takipte", musteri: "Randevunuz takip ediliyor", gerekenler: ["odeme"], sira: 20)),
+        ]
+        for (id, a) in st { try await owner.belgeYaz("statuses/\(id)", alanlar: a) }
+        let statuler = st.map { Statu(kimlik: $0.0, alanlar: $0.1) }
+        let o = try await e.kimlik.giris(kullaniciAdi: "yeni\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let calisan = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let bugun = Tr.bugun()
+
+        // 1) Pasaportlu yeni başvuru; aynı kod daha önce alınmışsa kural reddeder (çakışma), yeni kodla geçer.
+        let pasaport = "U\(ek)5678"
+        let veri: [String: FSDeger] = ["firstName": .metin("ALİ"), "lastName": .metin("VELİ"), "passportNo": .metin(pasaport),
+                                       "phone": .metin("+905321112233")]
+        let kod = "2026-11\(ek)"
+        try await owner.belgeYaz("trackingCodes/\(kod)", alanlar: ["appId": .metin("baskasi"), "createdAt": .zaman(Date())])
+        let carpisan = try XCTUnwrap(BasvuruIslemi.olustur(veri: veri, ulkeId: "almanya", ulke: nil, randevu: "", acilis: bugun, bugun: bugun,
+                                                           statuler: statuler, calisan: calisan, kod: kod))
+        do { try await ben.isle(carpisan.yazimlar); XCTFail("aynı kod iki kez alınmamalı") } catch {
+            // "Yoksa oluştur" ön koşulu: kod alınmışsa 409 (kural da reddederdi).
+            XCTAssertTrue(BasvuruIslemi.kodCakismasi(error))
+        }
+        let yeni = try XCTUnwrap(BasvuruIslemi.olustur(veri: veri, ulkeId: "almanya", ulke: nil, randevu: Tr.gunEkle(bugun, 30),
+                                                       acilis: bugun, bugun: bugun, statuler: statuler, calisan: calisan))
+        try await ben.isle(yeni.yazimlar)
+        let _a = try await ben.belge("applications/\(yeni.kimlik)")
+        let b = Basvuru(kimlik: yeni.kimlik, alanlar: try XCTUnwrap(_a))
+        XCTAssertEqual(b.statuId, "potansiyel")
+        XCTAssertEqual(b.pasaportSon3, "678")
+        XCTAssertNotNil(b.silinecek, "potansiyel: 60 gün sonra silinir")
+        XCTAssertNotNil(b.randevu)
+        // Müşteri takip sorgusuyla aynı anahtar: kod + pasaport.
+        let takip = try await owner.belge("takip/\(Takip.kimlik(kod: yeni.takipKodu, pasaport: pasaport))")
+        XCTAssertEqual(takip?["statusName"], .metin("Görüşme aşamasında"))
+        let dizin = try await ben.belge("lookup/\(BasvuruListesi.pasaportOzeti(pasaport))")
+        XCTAssertEqual(dizin?["apps"], .dizi([.metin(yeni.kimlik)]))
+
+        // 2) Pasaportsuz başvuru (yalnız ad, soyad, telefon).
+        let pasaportsuz = try XCTUnwrap(BasvuruIslemi.olustur(veri: ["firstName": .metin("AYŞE"), "lastName": .metin("KAYA"),
+                                                                     "phone": .metin("+905320000000")],
+                                                              ulkeId: "italya", ulke: nil, randevu: "", acilis: Tr.gunEkle(bugun, -2),
+                                                              bugun: bugun, statuler: statuler, calisan: calisan))
+        try await ben.isle(pasaportsuz.yazimlar)
+
+        // 3) Düzenle: pasaport değişti → yeni takip anahtarı, eski takip belgesi silinir, dizin güncellenir.
+        let eskiAnahtarBelgesi = try await ben.belge("applications/\(yeni.kimlik)/private/keys")
+        let eskiAnahtar = (eskiAnahtarBelgesi?["takipId"]?.metinDegeri ?? "", eskiAnahtarBelgesi?["passportHash"]?.metinDegeri ?? "")
+        var yeniVeri = veri
+        let yeniPasaport = "Y\(ek)9999"
+        yeniVeri["passportNo"] = .metin(yeniPasaport)
+        yeniVeri["lastName"] = .metin("VELİOĞLU")
+        let alanlar = [FormAlani(key: "lastName", label: "Soyisim", group: "kisisel"), FormAlani(key: "passportNo", label: "Pasaport no", group: "pasaport")]
+        try await ben.isle(BasvuruIslemi.duzenle(b, eskiForm: veri, yeniVeri: yeniVeri, alanlar: alanlar, ulkeId: "almanya", ulke: nil,
+                                                 randevu: Tr.gunEkle(bugun, 30), acilis: "", eskiAnahtar: eskiAnahtar, statuler: statuler,
+                                                 acikNotlar: [], calisan: calisan))
+        let eskiTakip = try await owner.belge("takip/\(eskiAnahtar.0)")
+        XCTAssertNil(eskiTakip, "eski takip belgesi silindi")
+        let yeniTakip = try await owner.belge("takip/\(Takip.kimlik(kod: yeni.takipKodu, pasaport: yeniPasaport))")
+        XCTAssertNotNil(yeniTakip)
+        let eskiDizin = try await ben.belge("lookup/\(eskiAnahtar.1)")
+        XCTAssertEqual(eskiDizin?["apps"], .dizi([]))
+        let _d = try await ben.belge("applications/\(yeni.kimlik)")
+        let duzenlenmis = Basvuru(kimlik: yeni.kimlik, alanlar: try XCTUnwrap(_d))
+        XCTAssertEqual(duzenlenmis.soyad, "VELİOĞLU")
+        XCTAssertEqual(duzenlenmis.pasaportSon3, "999")
+        XCTAssertEqual(duzenlenmis.randevu, b.randevu, "randevu günü aynı: saat korunur")
+    }
 }
