@@ -17,6 +17,9 @@
 	<false/>
 	<!-- "Beni unutma" diyen müşteri için: uygulama kapalıyken başvurunun durumu
 	     belirli aralıklarla denetlenir, değiştiyse bildirim gösterilir. -->
+	<!-- Çalışan panelinde pasaport fotoğrafı çekmek için (uygulama içinde açılan panel). -->
+	<key>NSCameraUsageDescription</key>
+	<string>Çalışan panelinde pasaport ve evrak fotoğrafı çekmek için kamera kullanılır. Fotoğraf yalnız panele yüklenir.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

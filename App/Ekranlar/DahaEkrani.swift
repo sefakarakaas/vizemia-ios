@@ -6,6 +6,7 @@ import VizeMiaCekirdek
 struct DahaEkrani: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
+    @State private var panelAcik = false
 
     var body: some View {
         List {
@@ -49,6 +50,14 @@ struct DahaEkrani: View {
                     Label("Google'da değerlendirin", systemImage: "star.fill")
                 }
             }
+            Section("VizeMia ekibi") {
+                Button {
+                    panelAcik = true
+                } label: {
+                    Label("Çalışan girişi (panel)", systemImage: "person.badge.key.fill")
+                }
+                .accessibilityIdentifier("calisan-girisi")
+            }
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(icerik.iletisim.unvan)
@@ -62,6 +71,7 @@ struct DahaEkrani: View {
         }
         .foregroundStyle(Tema.lacivert)
         .navigationTitle("Daha")
+        .fullScreenCover(isPresented: $panelAcik) { PanelEkrani() }
     }
 
     private var surum: String {

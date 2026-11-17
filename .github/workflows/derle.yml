@@ -56,8 +56,10 @@ jobs:
             -project VizeMia.xcodeproj -scheme VizeMia -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/derived \
-            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never used)|\*\* BUILD" || true
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never used|nearly matches)|\*\* BUILD" || true
           grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+          # "nearly matches": temsilci yöntemi imzası tutmuyor, yöntem hiç çağrılmaz.
+          if grep -q "nearly matches" xcodebuild.log; then echo "::error::Temsilci yöntemi imzası tutmuyor (nearly matches)"; exit 1; fi
       - name: Derleme kaydı
         if: failure()
         uses: actions/upload-artifact@v4
