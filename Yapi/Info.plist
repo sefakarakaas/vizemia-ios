@@ -17,9 +17,12 @@
 	<false/>
 	<!-- "Beni unutma" diyen müşteri için: uygulama kapalıyken başvurunun durumu
 	     belirli aralıklarla denetlenir, değiştiyse bildirim gösterilir. -->
-	<!-- Çalışan panelinde pasaport fotoğrafı çekmek için (uygulama içinde açılan panel). -->
+	<!-- Ekip ekranları bir süre kullanılmayınca Face ID ile kilitlenir. -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>Ekip ekranlarını (müşteri bilgileri) yalnız sizin açabilmeniz için Face ID kullanılır.</string>
+	<!-- Ekip ekranlarında pasaport ve evrak fotoğrafı çekmek için. -->
 	<key>NSCameraUsageDescription</key>
-	<string>Çalışan panelinde pasaport ve evrak fotoğrafı çekmek için kamera kullanılır. Fotoğraf yalnız panele yüklenir.</string>
+	<string>Pasaport ve evrak fotoğrafı çekmek için kamera kullanılır. Fotoğraf yalnız başvuru kaydına eklenir.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

@@ -64,6 +64,39 @@ final class EkranGoruntuleri: XCTestCase {
         }
     }
 
+    /// Çalışan girişi yapmış danışman: sol üstte "…, Sefa", özet, talepler, takvim.
+    /// Örnek veriyle açılır (ağa bağlanmaz).
+    func testEkip() {
+        app.launchArguments = ["-ornek-ekip"]
+        app.launch()
+        XCTAssertTrue(metin(", Sefa").waitForExistence(timeout: 60), "Danışman karşılaması yok")
+        bekle(2)
+        cek("ekip-ana")
+        surukle(0.80, 0.25)
+        cek("ekip-ana-2")
+
+        sekme("Talepler")
+        XCTAssertTrue(metin("AYSE OZTURK").waitForExistence(timeout: 10), "Talep listesi boş")
+        bekle(1)
+        cek("ekip-talepler")
+        metin("AYSE OZTURK").tap()
+        XCTAssertTrue(metin("Görüşme sonucu").waitForExistence(timeout: 8), "Talep ayrıntısı açılmadı")
+        bekle(1)
+        cek("ekip-talep")
+        surukle(0.80, 0.30)
+        cek("ekip-talep-2")
+
+        sekme("Takvim")
+        bekle(1)
+        cek("ekip-takvim")
+        let ay = app.buttons["Ay"].firstMatch
+        if ay.waitForExistence(timeout: 4) { ay.tap(); bekle(1); cek("ekip-takvim-ay") }
+
+        sekme("Hesabım")
+        bekle(1)
+        cek("ekip-hesap")
+    }
+
     func testEkranlar() {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Ana Sayfa"].waitForExistence(timeout: 60))

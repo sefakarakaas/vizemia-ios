@@ -6,7 +6,8 @@ import VizeMiaCekirdek
 struct DahaEkrani: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
-    @State private var panelAcik = false
+    @Environment(EkipOturumu.self) private var ekip
+    @State private var girisAcik = false
 
     var body: some View {
         List {
@@ -51,12 +52,20 @@ struct DahaEkrani: View {
                 }
             }
             Section("VizeMia ekibi") {
-                Button {
-                    panelAcik = true
-                } label: {
-                    Label("Çalışan girişi (panel)", systemImage: "person.badge.key.fill")
+                if ekip.girisli {
+                    Button {
+                        withAnimation(Hareket.yay) { ekip.ekipGorunumu = true }
+                    } label: {
+                        Label("Ekip görünümüne dön (\(ekip.calisan?.ilkAd ?? ""))", systemImage: "person.badge.key.fill")
+                    }
+                } else {
+                    Button {
+                        girisAcik = true
+                    } label: {
+                        Label("Çalışan girişi", systemImage: "person.badge.key.fill")
+                    }
+                    .accessibilityIdentifier("calisan-girisi")
                 }
-                .accessibilityIdentifier("calisan-girisi")
             }
             Section {
                 VStack(alignment: .leading, spacing: 4) {
@@ -71,7 +80,7 @@ struct DahaEkrani: View {
         }
         .foregroundStyle(Tema.lacivert)
         .navigationTitle("Daha")
-        .fullScreenCover(isPresented: $panelAcik) { PanelEkrani() }
+        .sheet(isPresented: $girisAcik) { GirisEkrani() }
     }
 
     private var surum: String {

@@ -45,12 +45,25 @@ struct AnaSayfaEkrani: View {
 
     private var ustSerit: some View {
         HStack(spacing: 12) {
-            Image("Logo")
-                .resizable()
-                .scaledToFit()
-                .frame(height: 34)
-                .accessibilityLabel("VizeMia")
-                .accessibilityAddTraits(.isHeader)
+            if let k = hafiza.son {
+                // "Beni unutma" diyen müşteri: sol üstte adıyla karşılama.
+                TimelineView(.everyMinute) { z in
+                    Text(Selamlama.cumle(saat: Calendar.current.component(.hour, from: z.date), ad: k.ad))
+                        .font(.vitrin(22))
+                        .foregroundStyle(Tema.lacivert)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                .belirme(0)
+            } else {
+                Image("Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 34)
+                    .accessibilityLabel("VizeMia")
+                    .accessibilityAddTraits(.isHeader)
+            }
             Spacer()
             Button {
                 gezinti.ara(icerik.iletisim, mesai: icerik.mesai)
@@ -221,20 +234,13 @@ struct KarsilamaKarti: View {
             gezinti.ac(.takip(kod: ""))
         } label: {
             VStack(alignment: .leading, spacing: 12) {
-                // Günün saatine göre: Günaydın / İyi günler / İyi akşamlar / İyi geceler.
-                TimelineView(.everyMinute) { zaman in
-                    Text(Selamlama.cumle(saat: Calendar.current.component(.hour, from: zaman.date), ad: kayit.ad))
-                        .font(.vitrin(26))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(kayit.ulke.isEmpty ? "Vize başvurunuz" : "\(kayit.ulke) vize başvurunuz")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.75))
                     HStack(spacing: 8) {
                         Text(kayit.durum.isEmpty ? "Durumu görün" : kayit.durum)
-                            .font(.headline)
+                            .font(.title3.weight(.heavy))
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.leading)
                         if yeniVar {

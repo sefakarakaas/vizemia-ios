@@ -2,19 +2,19 @@ import Foundation
 
 extension String {
     /// Düzenli ifadenin tamamıyla eşleşiyor mu? (desen ^…$ ile yazılır)
-    func eslesir(_ desen: String) -> Bool {
+    public func eslesir(_ desen: String) -> Bool {
         range(of: desen, options: .regularExpression) != nil
     }
 
     /// Düzenli ifadeye uyan her parçayı değiştirir.
-    func degistir(_ desen: String, _ yeni: String) -> String {
+    public func degistir(_ desen: String, _ yeni: String) -> String {
         replacingOccurrences(of: desen, with: yeni, options: .regularExpression)
     }
 
-    var kirpik: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+    public var kirpik: String { trimmingCharacters(in: .whitespacesAndNewlines) }
 
     /// JavaScript'teki `slice(0, n)` gibi: en çok n karakter.
-    func ilk(_ n: Int) -> String { String(prefix(n)) }
+    public func ilk(_ n: Int) -> String { String(prefix(n)) }
 }
 
 /// Türkiye saati. Cihazın saat dilimi bizi ilgilendirmiyor: Almanya'daki
@@ -50,7 +50,7 @@ public enum Tr {
         return iso(yil: p.year ?? 0, ay: p.month ?? 0, gun: p.day ?? 0)
     }
 
-    static func iso(yil: Int, ay: Int, gun: Int) -> String {
+    public static func iso(yil: Int, ay: Int, gun: Int) -> String {
         "\(dort(yil))-\(iki(ay))-\(iki(gun))"
     }
 

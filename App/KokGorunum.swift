@@ -1,8 +1,26 @@
 import SwiftUI
 import VizeMiaCekirdek
 
-/// Alt sekmeler: sitenin üst menüsünün karşılığı.
+/// Çalışan girişliyse ekip görünümü, değilse müşteri görünümü.
 struct KokGorunum: View {
+    @Environment(EkipOturumu.self) private var ekip
+
+    var body: some View {
+        ZStack {
+            if ekip.girisli && ekip.ekipGorunumu {
+                EkipKok().transition(.opacity)
+            } else if ekip.durum == .yetkisiz && ekip.ekipGorunumu {
+                YetkisizEkrani().transition(.opacity)
+            } else {
+                MusteriKok().transition(.opacity)
+            }
+        }
+        .animation(Hareket.yay, value: ekip.girisli && ekip.ekipGorunumu)
+    }
+}
+
+/// Alt sekmeler: sitenin üst menüsünün karşılığı.
+struct MusteriKok: View {
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(Gezinti.self) private var gezinti
     @Environment(TakipHafizasi.self) private var hafiza

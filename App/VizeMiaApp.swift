@@ -7,6 +7,8 @@ struct VizeMiaApp: App {
     @State private var icerik = IcerikDeposu()
     @State private var gezinti = Gezinti()
     @State private var hafiza = TakipHafizasi()
+    @State private var ekip = EkipOturumu()
+    @State private var ekipVerisi = EkipVerisi()
     @Environment(\.scenePhase) private var sahne
 
     init() {
@@ -20,6 +22,8 @@ struct VizeMiaApp: App {
                 .environment(icerik)
                 .environment(gezinti)
                 .environment(hafiza)
+                .environment(ekip)
+                .environment(ekipVerisi)
                 .environment(\.locale, Locale(identifier: "tr_TR"))
                 // Site yalnız açık temada; uygulama da öyle.
                 .preferredColorScheme(.light)
@@ -33,12 +37,14 @@ struct VizeMiaApp: App {
                 .onChange(of: sahne) { _, yeni in
                     switch yeni {
                     case .active:
+                        ekip.oneGeldi()
                         hafiza.disktenOku()
                         Task {
                             await icerik.yenile()
                             await hafiza.yenile()
                         }
                     case .background:
+                        ekip.arkaPlanaGecti()
                         // Uygulama kapalıyken durum denetimi: yalnız "Beni unutma" diyenler için.
                         if hafiza.hatirlaniyor { Bildirimler.sonrakiDenetimiPlanla() }
                     default:
