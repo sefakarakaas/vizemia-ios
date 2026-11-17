@@ -277,17 +277,29 @@ struct SonradanDekontSayfasi: View {
 
 struct BelgelerKarti: View {
     let veri: BasvuruDetayVerisi
+    let b: Basvuru
     let baglam: EkBaglami
     @Environment(EkipOturumu.self) private var ekip
+    @Environment(IcerikDeposu.self) private var icerik
+    @State private var tur = "randevu"
     @State private var dosya: HazirDosya?
     @State private var yukleniyor = false
     @State private var silinecek: DosyaBilgisi?
+    // Randevu bilgileri (hepsi seçmeli, zorunlu)
+    @State private var tarih = Date()
+    @State private var saat = ""
+    @State private var merkez = ""
+    @State private var sehir = ""
+    @State private var yer = ""
+    @State private var sehirSeciliyor = false
+    @State private var hazir = false
 
     private var belgeler: [DosyaBilgisi] { veri.dosyalar.filter { $0.tur == "randevu" || $0.tur == "diger" } }
+    private var secenekler: RandevuSecenekleri { icerik.randevu }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Belgeler").font(.headline).foregroundStyle(Tema.lacivert)
+            Text("Randevu kağıdı ve belgeler").font(.headline).foregroundStyle(Tema.lacivert)
             if belgeler.isEmpty { Text("Henüz belge yok.").font(.caption).foregroundStyle(Tema.govde) }
             ForEach(belgeler) { d in
                 BelgeSatiri(d: d, aciliyor: baglam.aciliyor == d.id, silinebilir: silebilir,
@@ -295,29 +307,154 @@ struct BelgelerKarti: View {
             }
             if ekip.yapabilir("app.edit") {
                 Divider()
-                Text("Diğer belge ekle").font(.subheadline.weight(.semibold)).foregroundStyle(Tema.lacivert)
+                Picker("Tür", selection: $tur.animation(Hareket.yay)) {
+                    Text("Randevu kağıdı").tag("randevu")
+                    Text("Diğer belge").tag("diger")
+                }
+                .pickerStyle(.segmented)
+                if tur == "randevu" { randevuAlanlari.transition(.opacity) }
                 DosyaSecDugmeleri(secilen: $dosya)
                 Button {
-                    guard let d = dosya else { return }
-                    Task {
-                        yukleniyor = true
-                        let r = await veri.belgeYukle(tur: "diger", dosya: d, evrakTamam: baglam.evrakTamam, ekip: ekip)
-                        yukleniyor = false
-                        if r.tamam { dosya = nil }
-                        baglam.bildir(r.tamam ? nil : r.mesaj, r.mesaj)
-                    }
-                } label: { Text(yukleniyor ? "Yükleniyor…" : "Yükle") }
-                    .buttonStyle(IkincilDugme())
-                    .disabled(dosya == nil || yukleniyor)
-                Text("Randevu kağıdı (tarih, saat ve merkez bilgisiyle) sıradaki güncellemede; şimdilik panelden yüklenir.")
-                    .font(.caption).foregroundStyle(Tema.silik)
+                    Task { await kaydet() }
+                } label: {
+                    Text(yukleniyor ? "Kaydediliyor…" : (tur == "randevu" ? "Randevu kağıdını kaydet" : "Yükle"))
+                }
+                .buttonStyle(AnaDugme())
+                .disabled(dosya == nil || yukleniyor)
             }
         }
         .kart()
         .belgeSilmeOnayi($silinecek) { d in await baglam.bildir(veri.belgeSil(d, ekip: ekip), "Belge silindi.") }
+        .sheet(isPresented: $sehirSeciliyor) {
+            SehirSecici(sehirler: secenekler.sehirler, sik: secenekler.sikSehirSayisi, secili: $sehir)
+        }
+        .onAppear {
+            // Daha önce girilmiş randevu varsa alanlar onunla dolu gelir.
+            guard !hazir else { return }
+            hazir = true
+            if let r = b.randevu, r > Date() { tarih = r }
+            saat = b.randevuSaati; merkez = b.randevuMerkezi; sehir = b.randevuSehri
+            yer = secenekler.temsilcilikMi(b.randevuMerkezi) ? b.randevuYeri : ""
+        }
+    }
+
+    private var randevuAlanlari: some View {
+        let temsil = secenekler.temsilcilikMi(merkez)
+        let yerler = temsil ? secenekler.temsilcilikler(ulke: b.ulke, tur: merkez) : []
+        return VStack(alignment: .leading, spacing: 10) {
+            DatePicker("Randevu tarihi", selection: $tarih, in: Date()..., displayedComponents: .date)
+                .environment(\.locale, Tr.yerel)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Tema.lacivert)
+            secimSatiri("Randevu saati", deger: saat, bos: "Saat seçin") {
+                ForEach(secenekler.saatler, id: \.self) { s in Button(s) { saat = s } }
+            }
+            secimSatiri("Randevu merkezi", deger: merkez, bos: "Merkez seçin") {
+                ForEach(secenekler.merkezler, id: \.self) { m in
+                    Button(m) {
+                        merkez = m
+                        let l = secenekler.temsilcilikler(ulke: b.ulke, tur: m)
+                        yer = l.count == 1 ? l[0].ad : ""
+                    }
+                }
+            }
+            if temsil {
+                if yerler.isEmpty {
+                    Text("\(b.ulkeAdi) için listede \(merkez.lowercased(with: Tr.yerel)) yok.").font(.caption).foregroundStyle(Tema.olumsuz)
+                } else {
+                    secimSatiri("Hangi temsilcilik", deger: yer, bos: "\(merkez) seçin") {
+                        ForEach(yerler) { t in Button(t.ad) { yer = t.ad } }
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Randevu şehri").font(.subheadline.weight(.semibold)).foregroundStyle(Tema.lacivert)
+                    Spacer()
+                    Button(sehir.isEmpty ? "Şehir seçin" : sehir) { sehirSeciliyor = true }
+                        .buttonStyle(KucukDugme())
+                }
+            }
+            Text("Kaydedilince müşteriye seçtiği kanallardan (WhatsApp, SMS, e-posta) randevu bilgisi gider.")
+                .font(.caption).foregroundStyle(Tema.govde)
+        }
+    }
+
+    private func secimSatiri<Icerik: View>(_ ad: String, deger: String, bos: String, @ViewBuilder secenek: () -> Icerik) -> some View {
+        HStack {
+            Text(ad).font(.subheadline.weight(.semibold)).foregroundStyle(Tema.lacivert)
+            Spacer()
+            Menu {
+                secenek()
+            } label: {
+                Text(deger.isEmpty ? bos : deger)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(deger.isEmpty ? Tema.silik : Tema.lacivert)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Tema.soluk, in: Capsule())
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func kaydet() async {
+        guard let d = dosya else { return }
+        yukleniyor = true
+        defer { yukleniyor = false }
+        if tur == "randevu" {
+            let r = RandevuGirdisi(tarih: Tr.isoGun(tarih, takvim: Tr.takvim), saat: saat, merkez: merkez, sehir: sehir,
+                                   yer: yer, ulke: b.ulke)
+            let sonuc = await veri.randevuKaydet(r, dosya: d, secenekler: secenekler, ekip: ekip)
+            if sonuc.tamam { dosya = nil }
+            baglam.bildir(sonuc.tamam ? nil : sonuc.mesaj, sonuc.mesaj)
+        } else {
+            let sonuc = await veri.belgeYukle(tur: "diger", dosya: d, evrakTamam: baglam.evrakTamam, ekip: ekip)
+            if sonuc.tamam { dosya = nil }
+            baglam.bildir(sonuc.tamam ? nil : sonuc.mesaj, sonuc.mesaj)
+        }
     }
 
     private var silebilir: Bool { (ekip.calisan?.yonetici ?? false) || (ekip.yapabilir("app.edit") && ekip.yapabilir("app.sensitive")) }
+}
+
+/// İl seçimi: sık kullanılan 6 il başta, öteki iller aramayla.
+struct SehirSecici: View {
+    let sehirler: [String]
+    let sik: Int
+    @Binding var secili: String
+    @Environment(\.dismiss) private var kapat
+    @State private var arama = ""
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if arama.isEmpty {
+                    Section("Sık kullanılan") { ForEach(Array(sehirler.prefix(sik)), id: \.self) { satir($0) } }
+                    Section("Diğer iller") { ForEach(Array(sehirler.dropFirst(sik)), id: \.self) { satir($0) } }
+                } else {
+                    let q = arama.lowercased(with: Tr.yerel)
+                    ForEach(sehirler.filter { $0.lowercased(with: Tr.yerel).hasPrefix(q) }, id: \.self) { satir($0) }
+                }
+            }
+            .searchable(text: $arama, prompt: "İl ara (ör. Bursa)")
+            .navigationTitle("Randevu şehri")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Vazgeç") { kapat() } } }
+        }
+    }
+
+    private func satir(_ s: String) -> some View {
+        Button {
+            secili = s
+            kapat()
+        } label: {
+            HStack {
+                Text(s).foregroundStyle(Tema.lacivert)
+                Spacer()
+                if s == secili { Image(systemName: "checkmark").foregroundStyle(Tema.turkuaz) }
+            }
+        }
+    }
 }
 
 // MARK: - Konsolosluk takibi

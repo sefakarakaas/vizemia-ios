@@ -16,6 +16,13 @@ final class IcerikDeposu {
     private let kaynak: IcerikKaynagi
     /// Uygulamayla gelen evrak kataloğu: siteden inen dosya eskiyse (alan yoksa) bu kullanılır.
     private let gomuluEvrak: EvrakKatalogu?
+    private let gomuluRandevu: RandevuSecenekleri?
+
+    /// Randevu kağıdı girişinin seçenekleri (merkezler, iller, saatler, temsilcilikler).
+    var randevu: RandevuSecenekleri {
+        akis.randevu ?? gomuluRandevu ?? RandevuSecenekleri(merkezler: [], temsilcilikTurleri: [], sehirler: [], sikSehirSayisi: 0,
+                                                             saatler: [], temsilcilikler: [], merkezHaritalari: [:])
+    }
 
     /// Panelin evrak kataloğu (ekip ekranı, evrak kontrol listesi).
     var evrak: EvrakKatalogu {
@@ -36,6 +43,7 @@ final class IcerikDeposu {
         // güncellenmiş ama cihaz uzun süredir çevrimdışıysa gömülü daha yenidir).
         let gomulu: Akis? = IcerikKaynagi.gomulu(.uygulama)
         gomuluEvrak = gomulu?.evrak
+        gomuluRandevu = gomulu?.randevu
         let kayitli: Akis? = kaynak.kayitli(.uygulama)
         if let k = kayitli, k.surum == 1, !k.sayfalar.isEmpty, k.uretim >= (gomulu?.uretim ?? "") {
             akis = k

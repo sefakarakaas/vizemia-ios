@@ -396,6 +396,36 @@ final class BasvuruDetayVerisi {
         return (true, "\(onEk) Başvuru \"\(s.ad)\" statüsüne geçti.")
     }
 
+    /// Randevu kağıdı: belge + randevu bilgileri; sonra müşteriye seçtiği kanallardan
+    /// "randevunuz alındı" ve evrak hatırlatması planlanır (panel: syncBildirim).
+    func randevuKaydet(_ r: RandevuGirdisi, dosya: HazirDosya, secenekler: RandevuSecenekleri, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        let hatalar = RandevuKurali.hatalar(r, secenekler, bugun: Tr.bugun())
+        if !hatalar.isEmpty { return (false, hatalar.joined(separator: " ")) }
+        let k = RandevuKurali.kayit(r, secenekler, konumlar: ekip.konumlar)
+        if let h = await isle(BasvuruIslemi.randevuBelgesi(b, r, kayit: k, dosya: dosya, calisan: c), ekip,
+                              yenile: [.basvuru, .gecmis, .dosyalar]) { return (false, h) }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return (true, "Randevu kaydedildi.") }
+        #endif
+        // Bildirim planı: müşterinin iletişim bilgisi (hassas veri) ve statü yetkisi gerekir.
+        guard ekip.yapabilir("app.status"), let i = iletisim, let guncel = basvuru else { return (true, "Randevu kaydedildi.") }
+        do {
+            let f = try await ekip.istemci()
+            let mevcut = try await f.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(kimlik))], sinir: 50)
+                .map { BildirimKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            let p = BildirimPlani.planla(guncel, randevu: r, kayit: k, iletisim: i, ayar: ekip.bildirimAyari, mevcut: mevcut, calisan: c)
+            if p.atlanan.contains("açık kanal yok") {
+                return (true, "Randevu kaydedildi. Bildirim planlanmadı: müşterinin telefonu / e-postası ya da kanal seçimi yok.")
+            }
+            if p.yazilan.isEmpty { return (true, "Randevu kaydedildi.") }
+            try await f.isle(p.yazimlar)
+            return (true, "Randevu kaydedildi; müşteriye \(p.yazilan.count) bildirim planlandı.")
+        } catch {
+            return (true, "Randevu kaydedildi ama otomatik bildirimler planlanamadı; panelden kontrol edin.")
+        }
+    }
+
     func belgeSil(_ d: DosyaBilgisi, ekip: EkipOturumu) async -> String? {
         guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
         return await isle(BasvuruIslemi.belgeSil(b, d, calisan: c), ekip, yenile: [.gecmis, .dosyalar])

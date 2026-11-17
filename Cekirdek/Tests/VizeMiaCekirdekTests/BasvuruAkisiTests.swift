@@ -334,3 +334,87 @@ final class BasvuruEkleriTests: XCTestCase {
         } else { XCTFail() }
     }
 }
+
+/// Randevu kağıdı ve bildirim planı (site deposu: tests/bildirim.test.mjs, tests/basvuru-akisi.test.mjs örnekleri).
+final class RandevuTests: XCTestCase {
+    static let secenekler = RandevuSecenekleri(
+        merkezler: ["VFS Global", "iDATA", "Konsolosluk", "Büyükelçilik"], temsilcilikTurleri: ["Konsolosluk", "Büyükelçilik"],
+        sehirler: ["Ankara", "İstanbul", "Bursa"], sikSehirSayisi: 2, saatler: ["09:00", "10:30"],
+        temsilcilikler: [
+            Temsilcilik(ulke: "abd", tur: "Büyükelçilik", ad: "ABD Büyükelçiliği (Ankara)", sehir: "Ankara", harita: "https://www.google.com/maps/search/?api=1&query=abd"),
+            Temsilcilik(ulke: "abd", tur: "Konsolosluk", ad: "ABD Başkonsolosluğu (İstanbul)", sehir: "İstanbul", harita: "https://www.google.com/maps/search/?api=1&query=abd2"),
+        ],
+        merkezHaritalari: ["VFS Global|Ankara": "https://www.google.com/maps/search/?api=1&query=vfs"])
+
+    func tr(_ d: Date) -> String {
+        let p = Tr.takvim.dateComponents([.year, .month, .day, .hour, .minute], from: d)
+        return "\(Tr.iso(yil: p.year!, ay: p.month!, gun: p.day!)) \(p.hour! < 10 ? "0" : "")\(p.hour!):\(p.minute! < 10 ? "0" : "")\(p.minute!)"
+    }
+    func an(_ s: String) -> Date { FSDeger.zamanOku(s)! }
+
+    func testRandevuHatalariVeKayit() {
+        let s = Self.secenekler
+        var r = RandevuGirdisi(tarih: "2026-12-01", saat: "10:30", merkez: "VFS Global", sehir: "Ankara", yer: "", ulke: "abd")
+        XCTAssertEqual(RandevuKurali.hatalar(r, s, bugun: "2026-11-17"), [])
+        XCTAssertEqual(RandevuKurali.kayit(r, s, konumlar: KonumAyari(belge: nil)).harita, "https://www.google.com/maps/search/?api=1&query=vfs")
+        let ayarli = KonumAyari(belge: ["merkez": .harita(["VFS Global|Ankara": .metin("https://maps.app.goo.gl/abc"),
+                                                          "iDATA|Bursa": .metin("http://kotu")])])
+        XCTAssertEqual(RandevuKurali.kayit(r, s, konumlar: ayarli).harita, "https://maps.app.goo.gl/abc", "ayardaki bağlantı önce")
+        XCTAssertNil(ayarli.merkez["iDATA|Bursa"], "geçersiz bağlantı alınmaz")
+        r.tarih = "2026-11-16"; r.saat = "11:00"; r.sehir = ""
+        XCTAssertEqual(RandevuKurali.hatalar(r, s, bugun: "2026-11-17"),
+                       ["Randevu tarihi geçmiş bir gün olamaz.", "Randevu saatini seçin.", "Randevu şehrini seçin."])
+        r = RandevuGirdisi(tarih: "2026-12-01", saat: "09:00", merkez: "Konsolosluk", sehir: "", yer: "ABD Büyükelçiliği (Ankara)", ulke: "abd")
+        XCTAssertEqual(RandevuKurali.hatalar(r, s, bugun: "2026-11-17"), ["Hangi konsolosluk olduğunu seçin."], "tür tutmalı")
+        r.yer = "ABD Başkonsolosluğu (İstanbul)"
+        XCTAssertEqual(RandevuKurali.hatalar(r, s, bugun: "2026-11-17"), [])
+        let k = RandevuKurali.kayit(r, s, konumlar: KonumAyari(belge: nil))
+        XCTAssertEqual(k.sehir, "İstanbul", "temsilcilikte şehir listeden")
+        XCTAssertEqual(k.yer, "ABD Başkonsolosluğu (İstanbul)")
+        XCTAssertEqual(RandevuKurali.an("2026-12-01", "09:00"), an("2026-12-01T06:00:00Z"))
+    }
+
+    func testPencereVeZaman() {
+        let pen = { (d: Date) in BildirimZamani.pencereye(d, bas: 9, son: 21) }
+        XCTAssertEqual(tr(pen(an("2026-11-23T11:00:00Z"))), "2026-11-23 14:00")
+        XCTAssertEqual(tr(pen(an("2026-11-23T18:00:00Z"))), "2026-11-24 09:00")
+        XCTAssertEqual(tr(pen(an("2026-11-23T20:30:00Z"))), "2026-11-24 09:00")
+        XCTAssertEqual(tr(pen(an("2026-11-23T00:00:00Z"))), "2026-11-23 09:00")
+        let hemen = BildirimAyari.Sablon(acik: true, mod: "hemen", gun: 0, saat: nil)
+        XCTAssertEqual(tr(BildirimZamani.plan(hemen, randevu: "2026-11-23", simdi: an("2026-11-05T12:00:00Z"), bas: 9, son: 21)), "2026-11-05 15:00")
+        XCTAssertEqual(tr(BildirimZamani.plan(hemen, randevu: "2026-11-23", simdi: an("2026-11-05T21:30:00Z"), bas: 9, son: 21)), "2026-11-06 09:00")
+        let once = BildirimAyari.Sablon(acik: true, mod: "oncesi", gun: 15, saat: 9)
+        XCTAssertEqual(tr(BildirimZamani.plan(once, randevu: "2026-11-23", simdi: an("2026-10-01T09:00:00Z"), bas: 9, son: 21)), "2026-11-08 09:00")
+        XCTAssertEqual(tr(BildirimZamani.plan(once, randevu: "2026-11-23", simdi: an("2026-11-13T12:00:00Z"), bas: 9, son: 21)), "2026-11-13 15:00", "geçtiyse hemen")
+        XCTAssertEqual(tr(BildirimZamani.plan(once, randevu: "2026-11-23", simdi: an("2026-11-13T22:00:00Z"), bas: 9, son: 21)), "2026-11-14 09:00")
+    }
+
+    func testPlan() {
+        let b = BasvuruAkisiTests.basvuru(["country": .metin("abd"), "countryName": .metin("ABD")])
+        let r = RandevuGirdisi(tarih: "2026-12-20", saat: "09:00", merkez: "VFS Global", sehir: "Ankara", yer: "", ulke: "abd")
+        let k = RandevuKurali.kayit(r, Self.secenekler, konumlar: KonumAyari(belge: nil))
+        let iletisim = MusteriIletisimi(form: ["phone": .metin("0532 111 22 33"), "email": .metin("a@b.co"),
+                                              "channels": .harita(["wa": .mantik(true), "sms": .mantik(false), "email": .mantik(true)])])
+        let ayar = BildirimAyari(belge: ["gruplar": .dizi([.harita(["id": .metin("g_abc123"), "ulkeler": .dizi([.metin("abd")]),
+            "templates": .harita(["evrak-hatirlatma": .harita(["offsetDays": .tam(10)])])])])])
+        let simdi = an("2026-11-17T08:00:00Z")   // TR 11:00
+        let p = BildirimPlani.planla(b, randevu: r, kayit: k, iletisim: iletisim, ayar: ayar,
+                                     mevcut: [BildirimKaydi(kimlik: "x1", alanlar: ["kind": .metin("evrak-hatirlatma"), "status": .metin("planned")]),
+                                              BildirimKaydi(kimlik: "x2", alanlar: ["kind": .metin("randevu-alindi"), "status": .metin("sent")]),
+                                              BildirimKaydi(kimlik: "x3", alanlar: ["kind": .metin("form-linki"), "status": .metin("planned")])],
+                                     calisan: BasvuruAkisiTests.calisan, simdi: simdi)
+        XCTAssertEqual(p.iptal, 1, "form bağlantısına dokunulmaz")
+        XCTAssertEqual(p.yazilan, ["randevu-alindi", "evrak-hatirlatma"], "randevu alındı yeni bilgilerle yeniden")
+        guard case let .olustur(_, a, _) = p.yazimlar[1] else { return XCTFail() }
+        XCTAssertEqual(a["channels"], .harita(["wa": .mantik(true), "sms": .mantik(false), "email": .mantik(true)]))
+        XCTAssertEqual(a["phone"], .metin("+905321112233"))
+        XCTAssertEqual(a["sendAt"], .zaman(simdi.addingTimeInterval(30 * 60)), "olaydan sonra en erken 30 dk")
+        guard case let .olustur(_, h, _) = p.yazimlar[2] else { return XCTFail() }
+        XCTAssertEqual(h["reminderDays"], .tam(10), "ülke grubunun şablonu")
+        XCTAssertEqual(h["docDeadline"], .metin("2026-12-17"))
+        if case let .zaman(d)? = h["sendAt"] { XCTAssertEqual(tr(d), "2026-12-10 09:00") } else { XCTFail() }
+        let kanalsiz = BildirimPlani.planla(b, randevu: r, kayit: k, iletisim: MusteriIletisimi(form: ["phone": .metin("+49 151 1234567")]),
+                                            ayar: BildirimAyari(belge: nil), mevcut: [], calisan: BasvuruAkisiTests.calisan, simdi: simdi)
+        XCTAssertEqual(kanalsiz.atlanan, ["açık kanal yok"], "yabancı numaraya WhatsApp/SMS planlanmaz")
+    }
+}

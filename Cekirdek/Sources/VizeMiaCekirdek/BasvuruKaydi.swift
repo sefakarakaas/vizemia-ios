@@ -23,6 +23,8 @@ public struct Basvuru: Equatable, Identifiable {
     public var randevuSehri: String
     public var pasaportSon3: String
     public var sorumlu: String
+    /// Müşteriyi izleyen danışmanın kimliği (bekleyen WhatsApp görevi ona düşer).
+    public var sorumluUid: String
     public var silinecek: Date?
     public var sonAdimZamani: Date?
     /// Silme bekletiliyor (itiraz, dava): yönetici açar.
@@ -57,6 +59,7 @@ public struct Basvuru: Equatable, Identifiable {
         randevuSehri = m("randevuSehri")
         pasaportSon3 = m("passportLast3")
         sorumlu = m("assignedName")
+        sorumluUid = m("assignedTo")
         silinecek = a["deleteAfter"]?.zamanDegeri
         sonAdimZamani = a["finalAt"]?.zamanDegeri
         bekletiliyor = a["legalHold"]?.mantikDegeri ?? false

@@ -307,4 +307,71 @@ final class BasvuruEmulatorTests: XCTestCase {
         let silinen = try await owner.belge("applications/\(appId)/dosyalar/\(diger.id)")
         XCTAssertNil(silinen)
     }
+
+    func testRandevuKagidiVeBildirimPlani() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("randevu\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("randevu\(ek)"), "displayName": .metin("Sefa Karakaş"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["app.payment"]).map { .metin($0) }),
+        ])])
+        let appId = "rnd\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-10\(ek)"), "year": .tam(2026), "month": .tam(10),
+            "country": .metin("abd"), "countryName": .metin("ABD"), "firstName": .metin("ECE"), "lastName": .metin("SU"),
+            "passportLast3": .metin("222"), "statusId": .metin("randevu"), "statusName": .metin("Randevu Alındı"),
+            "checklist": .harita([:]), "finalAt": .bos, "deleteAfter": .bos, "legalHold": .mantik(false),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+            "updatedAt": .zaman(Date()), "updatedBy": .metin(uid),
+        ])
+        // Daha önce planlanmış bir hatırlatma (randevu değişince iptal edilmeli).
+        try await owner.belgeYaz("bildirimler/eski\(ek)", alanlar: [
+            "appId": .metin(appId), "trackingCode": .metin("2026-10\(ek)"), "kind": .metin("evrak-hatirlatma"),
+            "sendAt": .zaman(Date().addingTimeInterval(86_400)), "status": .metin("planned"),
+            "channels": .harita(["wa": .mantik(true), "sms": .mantik(false), "email": .mantik(false)]),
+            "name": .metin("ECE SU"), "countryName": .metin("ABD"), "appointmentDate": .metin("2026-12-01"),
+            "docDeadline": .metin("2026-11-28"), "reminderDays": .tam(15), "phone": .metin("+905321112233"),
+            // Panelin buildBildirim'i bu alanları hep yazar (kural waStatus'a bakıyor).
+            "country": .metin("abd"), "email": .bos, "waStatus": .metin("pending"), "attempts": .tam(0), "sentAt": .bos,
+            "force": .mantik(false), "assignedTo": .metin(uid), "assignedName": .metin("Sefa Karakaş"),
+            "createdAt": .zaman(Date()), "createdBy": .metin(uid), "updatedAt": .zaman(Date()), "updatedBy": .metin(uid),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "randevu\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let calisan = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let _a = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_a))
+
+        let s = RandevuTests.secenekler
+        let r = RandevuGirdisi(tarih: Tr.gunEkle(Tr.bugun(), 40), saat: "09:00", merkez: "Büyükelçilik", sehir: "",
+                               yer: "ABD Büyükelçiliği (Ankara)", ulke: "abd")
+        XCTAssertEqual(RandevuKurali.hatalar(r, s, bugun: Tr.bugun()), [])
+        let k = RandevuKurali.kayit(r, s, konumlar: KonumAyari(belge: nil))
+        try await ben.isle(BasvuruIslemi.randevuBelgesi(b, r, kayit: k, dosya: HazirDosya(ad: "randevu.pdf", mime: "application/pdf",
+                                                                                         bayt: Data("%PDF-1.4".utf8)), calisan: calisan))
+        let _s = try await ben.belge("applications/\(appId)")
+        let sonra = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_s))
+        XCTAssertEqual(sonra.randevuSaati, "09:00")
+        XCTAssertEqual(sonra.randevuYeri, "ABD Büyükelçiliği (Ankara)")
+        XCTAssertEqual(sonra.randevuSehri, "Ankara")
+
+        // Bildirim planı: var olanları oku, planlıyı iptal et, yenileri yaz (tek yazım).
+        let mevcut = try await ben.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+            .map { BildirimKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        XCTAssertEqual(mevcut.count, 1)
+        let iletisim = MusteriIletisimi(form: ["phone": .metin("0532 111 22 33"), "email": .metin("ece@ornek.com")])
+        let p = BildirimPlani.planla(sonra, randevu: r, kayit: k, iletisim: iletisim, ayar: BildirimAyari(belge: nil),
+                                     mevcut: mevcut, calisan: calisan)
+        XCTAssertEqual(p.yazilan, ["randevu-alindi", "evrak-hatirlatma"])
+        try await ben.isle(p.yazimlar)
+        let tumu = try await owner.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+        XCTAssertEqual(tumu.filter { $0.alanlar["status"] == .metin("planned") }.count, 2)
+        XCTAssertEqual(tumu.first { $0.kimlik == "eski\(ek)" }?.alanlar["status"], .metin("cancelled"))
+        let yeni = try XCTUnwrap(tumu.first { $0.alanlar["kind"] == .metin("randevu-alindi") })
+        XCTAssertEqual(yeni.alanlar["randevuYeri"], .metin("ABD Büyükelçiliği (Ankara)"))
+        XCTAssertEqual(yeni.alanlar["email"], .metin("ece@ornek.com"))
+    }
 }

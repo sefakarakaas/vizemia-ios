@@ -35,6 +35,9 @@ final class EkipOturumu {
     private(set) var smsAyari = SmsAyari(belge: nil)
     /// Kasa bildirimi (Ayarlar → Kasa ve raporlar → servis adresi): ödeme girilince ekibe haber.
     private(set) var kasaServisUrl = ""
+    /// Ayarlar → Randevu konumları (harita bağlantıları) ve otomatik bildirim ayarı.
+    private(set) var konumlar = KonumAyari(belge: nil)
+    private(set) var bildirimAyari = BildirimAyari(belge: nil)
 
     private var oturum: KimlikIstemci.Oturum?
     private var arkaPlanaGecis: Date?
@@ -122,6 +125,8 @@ final class EkipOturumu {
             async let eposta = f.belge("settings/eposta")
             async let sms = f.belge("settings/sms")
             async let kasa = f.belge("settings/kasa")
+            async let konum = f.belge("settings/konumlar")
+            async let bildirim = f.belge("settings/bildirim")
             guard let e = try await emp else { durum = .yetkisiz; return }
             let c = Calisan(uid: o.uid, belge: e, izinBelgesi: try? await izin)
             guard c.aktif else { durum = .yetkisiz; calisan = c; return }
@@ -135,6 +140,8 @@ final class EkipOturumu {
             evrakAyari = EvrakAyari(belge: try? await evrak)
             epostaAyari = EpostaAyari(belge: try? await eposta)
             smsAyari = SmsAyari(belge: try? await sms)
+            konumlar = KonumAyari(belge: (try? await konum) ?? nil)
+            bildirimAyari = BildirimAyari(belge: (try? await bildirim) ?? nil)
             let k = ((try? await kasa) ?? nil)?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
             kasaServisUrl = k.range(of: "^https://script\\.google\\.com/macros/s/[\\w-]+/exec$", options: .regularExpression) != nil ? k : ""
             durum = .acik

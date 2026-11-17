@@ -91,7 +91,7 @@ struct BasvuruDetayi: View {
                     aramaKarti(b, s, d).belirme(4)
                 }
                 if ekip.yapabilir("app.payment") { OdemelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
-                if ekip.yapabilir("app.sensitive") { BelgelerKarti(veri: veri, baglam: baglam(b)).belirme(5) }
+                if ekip.yapabilir("app.sensitive") { BelgelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
                 evrakKarti(b).belirme(5)
                 if !b.konsTakipKodu.isEmpty || ekip.yapabilir("app.edit") {
                     KonsoloslukKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
@@ -101,7 +101,7 @@ struct BasvuruDetayi: View {
                 bilgiKarti(b).belirme(8)
                 if veri.grup.count > 1 { grupKarti(b).belirme(9) }
                 gecmisKarti.belirme(10)
-                Text("Randevu kağıdı girişi, pasaport okutma ve form işlemleri sıradaki güncellemeyle uygulamaya gelecek; şimdilik panelden yapılır.")
+                Text("Pasaport okutma, başvuru formu ve müşteri formu işlemleri sıradaki güncellemeyle uygulamaya gelecek; şimdilik panelden yapılır.")
                     .font(.caption)
                     .foregroundStyle(Tema.silik)
                     .padding(.horizontal, 4)

@@ -114,7 +114,7 @@ final class EkranGoruntuleri: XCTestCase {
         XCTAssertTrue(metin("Evrak kontrol listesi").waitForExistence(timeout: 8), "Başvuru ayrıntısı açılmadı")
         bekle(1)
         cek("ekip-basvuru")
-        for i in 2...6 {
+        for i in 2...10 {
             surukle(0.85, 0.25)
             bekle(0.6)
             cek("ekip-basvuru-\(i)")
