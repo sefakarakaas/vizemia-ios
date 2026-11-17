@@ -106,15 +106,125 @@ public struct FirestoreIstemci {
     public var taban: URL
     public var proje: String
     public var oturum: URLSession
+    /// Çalışan girişi yapıldıysa Firebase kimlik belirteci: istekler o çalışan
+    /// adına gider, güvenlik kuralları panelle aynı izinleri uygular.
+    public var belirtec: String?
 
     public init(
         taban: URL = URL(string: "https://firestore.googleapis.com/v1")!,
         proje: String = "vieze-941cf",
-        oturum: URLSession = .shared
+        oturum: URLSession = .shared,
+        belirtec: String? = nil
     ) {
         self.taban = taban
         self.proje = proje
         self.oturum = oturum
+        self.belirtec = belirtec
+    }
+
+    public struct Belge: Equatable {
+        /// Belgenin kimliği (yolun son parçası).
+        public var kimlik: String
+        public var alanlar: [String: FSDeger]
+    }
+
+    public enum Yon: String { case artan = "ASCENDING", azalan = "DESCENDING" }
+
+    /// Sorgu koşulu: alan, işlem ("EQUAL", "IN", "GREATER_THAN_OR_EQUAL", "LESS_THAN" …), değer.
+    public struct Kosul {
+        public var alan: String
+        public var islem: String
+        public var deger: FSDeger
+
+        public init(_ alan: String, _ islem: String, _ deger: FSDeger) {
+            self.alan = alan; self.islem = islem; self.deger = deger
+        }
+
+        public static func esit(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "EQUAL", d) }
+        public static func icinde(_ a: String, _ d: [FSDeger]) -> Kosul { Kosul(a, "IN", .dizi(d)) }
+        public static func enAz(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "GREATER_THAN_OR_EQUAL", d) }
+        public static func kucuk(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "LESS_THAN", d) }
+
+        var json: [String: Any] {
+            ["fieldFilter": ["field": ["fieldPath": alan], "op": islem, "value": deger.json]]
+        }
+    }
+
+    /// Tek koleksiyonda sorgu (koşulların hepsi), `sirala` alanına göre, en çok `sinir` kayıt.
+    public func sorgu(
+        koleksiyon: String,
+        kosullar: [Kosul] = [],
+        sirala: (String, Yon)? = nil,
+        sinir: Int = 200,
+        ust: String? = nil
+    ) async throws -> [Belge] {
+        var istek = URLRequest(url: adres(ust.map { "\(kok)/\($0):runQuery" } ?? "\(kok):runQuery"))
+        istek.httpMethod = "POST"
+        istek.timeoutInterval = 20
+        istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        istek.httpBody = try JSONSerialization.data(withJSONObject: ["structuredQuery": FirestoreIstemci.sorguYapisi(
+            koleksiyon: koleksiyon, kosullar: kosullar, sirala: sirala, sinir: sinir)])
+        let (veri, kod) = try await gonder(istek)
+        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        return FirestoreIstemci.sorguCevabi(veri)
+    }
+
+    static func sorguYapisi(koleksiyon: String, kosullar: [Kosul], sirala: (String, Yon)?, sinir: Int) -> [String: Any] {
+        var yapi: [String: Any] = ["from": [["collectionId": koleksiyon]], "limit": sinir]
+        if kosullar.count == 1 {
+            yapi["where"] = kosullar[0].json
+        } else if kosullar.count > 1 {
+            yapi["where"] = ["compositeFilter": ["op": "AND", "filters": kosullar.map { $0.json }]]
+        }
+        if let (a, y) = sirala {
+            yapi["orderBy"] = [["field": ["fieldPath": a], "direction": y.rawValue]]
+        }
+        return yapi
+    }
+
+    static func sorguCevabi(_ veri: Data) -> [Belge] {
+        let dizi = (try? JSONSerialization.jsonObject(with: veri)) as? [[String: Any]] ?? []
+        return dizi.compactMap { satir in
+            guard let b = satir["document"] as? [String: Any], let ad = b["name"] as? String else { return nil }
+            return Belge(kimlik: String(ad.split(separator: "/").last ?? ""), alanlar: FSDeger.alanlar(b["fields"]))
+        }
+    }
+
+    /// Var olan belgede yalnız verilen alanları değiştirir; `zamanAlanlari`
+    /// sunucu saatiyle yazılır (kurallar `handledAt == request.time` istiyor).
+    public func guncelle(_ yol: String, alanlar: [String: FSDeger], zamanAlanlari: [String] = []) async throws {
+        var istek = URLRequest(url: adres("\(kok):commit"))
+        istek.httpMethod = "POST"
+        istek.timeoutInterval = 20
+        istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        istek.httpBody = try JSONSerialization.data(withJSONObject: FirestoreIstemci.guncellemeGovdesi(
+            ad: "\(kok)/\(yol)", alanlar: alanlar, zamanAlanlari: zamanAlanlari))
+        let (_, kod) = try await gonder(istek)
+        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+    }
+
+    /// Belgeyi verilen alanlarla yazar (varsa üzerine). Yalnız testlerde, emülatöre
+    /// yönetici belirteciyle örnek veri koymak için.
+    func belgeYaz(_ yol: String, alanlar: [String: FSDeger]) async throws {
+        var istek = URLRequest(url: adres("\(kok):commit"))
+        istek.httpMethod = "POST"
+        istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        istek.httpBody = try JSONSerialization.data(withJSONObject: [
+            "writes": [["update": ["name": "\(kok)/\(yol)", "fields": alanlar.mapValues { $0.json }]]],
+        ])
+        let (_, kod) = try await gonder(istek)
+        guard kod == 200 else { throw FirestoreHatasi.sunucu(kod) }
+    }
+
+    static func guncellemeGovdesi(ad: String, alanlar: [String: FSDeger], zamanAlanlari: [String]) -> [String: Any] {
+        [
+            "writes": [[
+                "update": ["name": ad, "fields": alanlar.mapValues { $0.json }],
+                "updateMask": ["fieldPaths": alanlar.keys.sorted()],
+                "currentDocument": ["exists": true],
+                "updateTransforms": zamanAlanlari.map { ["fieldPath": $0, "setToServerValue": "REQUEST_TIME"] },
+            ] as [String: Any]],
+        ]
     }
 
     var kok: String { "projects/\(proje)/databases/(default)/documents" }
@@ -171,7 +281,9 @@ public struct FirestoreIstemci {
     }
 
     func gonder(_ istek: URLRequest) async throws -> (Data, Int) {
-        try await Ag.gonder(istek, oturum: oturum)
+        var i = istek
+        if let b = belirtec { i.setValue("Bearer \(b)", forHTTPHeaderField: "Authorization") }
+        return try await Ag.gonder(i, oturum: oturum)
     }
 }
 
