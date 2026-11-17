@@ -279,3 +279,58 @@ final class GomuluEvrakTests: XCTestCase {
         XCTAssertFalse(a.sayfalar.isEmpty)
     }
 }
+
+final class BasvuruEkleriTests: XCTestCase {
+    func testOdemeHatalari() {
+        let bugun = "2026-11-17"
+        XCTAssertEqual(OdemeKurali.hatalar(tarih: bugun, tutar: nil, paraBirimi: "TRY", yontem: "havale", onayKodu: "", aciklama: "", bugun: bugun), [])
+        XCTAssertEqual(OdemeKurali.hatalar(tarih: "2026-11-18", tutar: 10, paraBirimi: "TRY", yontem: "kart", onayKodu: "", aciklama: "", bugun: bugun),
+                       ["Ödeme tarihi ileri bir tarih olamaz."])
+        XCTAssertEqual(OdemeKurali.hatalar(tarih: "", tutar: -5, paraBirimi: "JPY", yontem: "x", onayKodu: "a;b", aciklama: "", bugun: bugun).count, 5)
+        XCTAssertEqual(OdemeKurali.tutarDegeri(4500), .tam(4500))
+        XCTAssertEqual(OdemeKurali.tutarDegeri(12.345), .ondalik(12.35))
+        XCTAssertEqual(OdemeKurali.sayiYazi(2250.5), "2250.5")
+        XCTAssertEqual(OdemeKurali.tutarOku("2.250,50"), 2250.5)
+        XCTAssertEqual(OdemeKurali.tutarOku("2250,5"), 2250.5)
+        XCTAssertEqual(OdemeKurali.tutarOku("2250.5"), 2250.5)
+        XCTAssertEqual(OdemeKurali.tutarOku("1.000.000"), 1_000_000)
+        XCTAssertNil(OdemeKurali.tutarOku(" "))
+        XCTAssertNil(OdemeKurali.tutarOku("abc"))
+    }
+
+    func testIleriStatuVeKodlar() {
+        let st = BasvuruAkisiTests.varsayilan.enumerated().map { i, s in
+            Statu(kimlik: s.id, alanlar: ["name": .metin(s.ad), "order": .tam(i * 10), "isFinal": .mantik(s.son)])
+        }
+        let b = BasvuruAkisiTests.basvuru()   // potansiyel
+        XCTAssertEqual(b.ileriStatu(st, hedefId: "randevu-takip")?.id, "randevu-takip")
+        let ileride = BasvuruAkisiTests.basvuru(["statusId": .metin("konsoloslukta")])
+        XCTAssertNil(ileride.ileriStatu(st, hedefId: "randevu-takip"), "yalnız ileri")
+        XCTAssertNil(b.ileriStatu(st, hedefId: "teslim"), "son adıma kendiliğinden geçilmez")
+        XCTAssertEqual(KonsoloslukKodu.temizle(" ist 2026/55 "), "IST2026/55")
+        XCTAssertTrue(KonsoloslukKodu.gecerli("IST2026/55"))
+        XCTAssertFalse(KonsoloslukKodu.gecerli("A1"))
+        XCTAssertEqual(Dosya.adTemizle("a/b:c?.pdf"), "a-b-c-.pdf")
+        XCTAssertEqual(Dosya.adTemizle("   "), "belge")
+        XCTAssertEqual(Dosya.boyutYazi(2_400_000), "2,4 MB")
+        XCTAssertEqual(Dosya.boyutYazi(610_000), "610 KB")
+        XCTAssertTrue(Dosya.sorun(mime: "image/gif", boyut: 10).hasPrefix("Yalnız PDF"))
+        XCTAssertEqual(Dosya.sorun(mime: "image/jpeg", boyut: 10), "")
+    }
+
+    func testParcalama() {
+        let c = BasvuruAkisiTests.calisan
+        let r = Dosya.ekle(ust: "applications/a", tur: "odeme", dosya: HazirDosya(ad: "d.jpg", mime: "image/jpeg",
+                                                                                  bayt: Data(count: 1_800_001)), calisan: c, kimlik: "abcdefgh12")
+        XCTAssertEqual(r.yazimlar.count, 4, "3 parça + bilgi")
+        if case let .olustur(yol, alanlar, _) = r.yazimlar[2] {
+            XCTAssertEqual(yol, "applications/a/dosyaIcerik/abcdefgh12_2")
+            XCTAssertEqual(alanlar["veri"]?.baytDegeri?.count, 1)
+        } else { XCTFail() }
+        if case let .olustur(yol, alanlar, zaman) = r.yazimlar[3] {
+            XCTAssertEqual(yol, "applications/a/dosyalar/abcdefgh12")
+            XCTAssertEqual(alanlar["parca"], .tam(3))
+            XCTAssertEqual(zaman, ["at"])
+        } else { XCTFail() }
+    }
+}

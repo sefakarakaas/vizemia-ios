@@ -83,6 +83,10 @@ if (apps.durum === 401) {
   hata('Apple anahtarı reddetti (401). Olası nedenler: Key ID ile .p8 dosyası farklı anahtarlara ait; Issuer ID yanlış; anahtar iptal edilmiş; ya da "Individual Keys" sekmesinden oluşturulmuş (Team Keys olmalı).');
 } else if (apps.durum === 403) {
   hata('Anahtar geçerli ama yetkisi yetmiyor (403). Anahtarın Access değeri "Admin" olmalı.');
+} else if (apps.durum >= 500) {
+  // Apple'ın kendi sunucu hatası: anahtarla ilgisi yok. Denetim atlanır, asıl
+  // yükleme denenir (o da düşerse hatası orada görünür).
+  console.log(`! Apple şu an hata veriyor (${apps.durum}); anahtar denetimi atlandı, yüklemeye geçiliyor.`);
 } else if (apps.durum !== 200) {
   hata(`Apple beklenmeyen cevap verdi: ${apps.durum} ${JSON.stringify(apps.j.errors?.[0]?.title || '')}`);
 } else {

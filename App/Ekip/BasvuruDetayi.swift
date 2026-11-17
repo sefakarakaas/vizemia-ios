@@ -1,4 +1,5 @@
 import SwiftUI
+import QuickLook
 import VizeMiaCekirdek
 
 /// Başvuru ayrıntısı (panel: #/basvuru/<id>). Kutular panelle aynı işleri
@@ -30,6 +31,9 @@ struct BasvuruDetayi: View {
 
     @State private var bildiri: Bildiri?
     @State private var basari = 0
+    // Belge önizleme
+    @State private var onizleme: URL?
+    @State private var aciliyor: String?
 
     struct Bildiri: Equatable {
         var metin: String
@@ -86,13 +90,18 @@ struct BasvuruDetayi: View {
                 if let s = ekip.statuSozlugu[b.statuId], s.tekrarAranir, let d = b.aramaDurumu(s) {
                     aramaKarti(b, s, d).belirme(4)
                 }
+                if ekip.yapabilir("app.payment") { OdemelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
+                if ekip.yapabilir("app.sensitive") { BelgelerKarti(veri: veri, baglam: baglam(b)).belirme(5) }
                 evrakKarti(b).belirme(5)
+                if !b.konsTakipKodu.isEmpty || ekip.yapabilir("app.edit") {
+                    KonsoloslukKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
+                }
                 notlarKarti(b).belirme(6)
                 takipKarti(b).belirme(7)
                 bilgiKarti(b).belirme(8)
                 if veri.grup.count > 1 { grupKarti(b).belirme(9) }
                 gecmisKarti.belirme(10)
-                Text("Ödemeler, randevu kağıdı, konsolosluk takibi, pasaport okutma ve form işlemleri sıradaki güncellemeyle uygulamaya gelecek; şimdilik panelden yapılır.")
+                Text("Randevu kağıdı girişi, pasaport okutma ve form işlemleri sıradaki güncellemeyle uygulamaya gelecek; şimdilik panelden yapılır.")
                     .font(.caption)
                     .foregroundStyle(Tema.silik)
                     .padding(.horizontal, 4)
@@ -101,6 +110,7 @@ struct BasvuruDetayi: View {
         }
         .formKlavyesi()
         .refreshable { await veri.yukle(ekip) }
+        .quickLookPreview($onizleme)
         .confirmationDialog("Bu üst not silinsin mi?", isPresented: Binding(
             get: { silinecekUstNot != nil }, set: { if !$0 { silinecekUstNot = nil } }), titleVisibility: .visible) {
             Button("Sil", role: .destructive) {
@@ -257,8 +267,7 @@ struct BasvuruDetayi: View {
 
     private func statuKarti(_ b: Basvuru) -> some View {
         let s = ekip.statuSozlugu[hedef]
-        let evrak = evrakListesi(b).filter { !$0.kosullu }
-        let evrakTamam = !evrak.isEmpty && evrak.allSatisfy { b.evraklar[$0.id] == true }
+        let evrakTamam = evrakTamamMi(b)
         return VStack(alignment: .leading, spacing: 14) {
             Text("Statü").font(.headline).foregroundStyle(Tema.lacivert)
             Picker("Yeni statü", selection: $hedef) {
@@ -367,6 +376,30 @@ struct BasvuruDetayi: View {
     }
 
     // MARK: Evrak kontrol listesi
+
+    /// Herkesten istenen evrakların hepsi geldi mi (geçiş şartı "evrak").
+    private func evrakTamamMi(_ b: Basvuru) -> Bool {
+        let temel = evrakListesi(b).filter { !$0.kosullu }
+        return !temel.isEmpty && temel.allSatisfy { b.evraklar[$0.id] == true }
+    }
+
+    private func baglam(_ b: Basvuru) -> EkBaglami {
+        EkBaglami(bildir: { h, t in goster(h, tamam: t) }, ac: { belgeAc($0) }, aciliyor: aciliyor, evrakTamam: evrakTamamMi(b))
+    }
+
+    /// Belgeyi indirir (parçalar) ve önizler.
+    private func belgeAc(_ d: DosyaBilgisi) {
+        guard aciliyor == nil else { return }
+        aciliyor = d.id
+        Task {
+            do {
+                onizleme = try await veri.belgeDosyasi(d, ekip: ekip)
+            } catch {
+                goster("Belge açılamadı (eksik ya da silinmiş olabilir).", tamam: "")
+            }
+            aciliyor = nil
+        }
+    }
 
     private func evrakListesi(_ b: Basvuru) -> [Evrak] {
         ekip.evrakAyari.liste(ulke: b.ulke, katalog: icerik.evrak, isaretli: b.evraklar)

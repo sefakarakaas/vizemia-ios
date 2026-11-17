@@ -193,4 +193,118 @@ final class BasvuruEmulatorTests: XCTestCase {
             XCTAssertEqual(error as? FirestoreHatasi, .izinYok)
         }
     }
+
+    func testOdemeBelgeKonsolosluk() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("odeme\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("odeme\(ek)"), "displayName": .metin("Ezgi Danışman"), "role": .metin("writer"), "active": .mantik(true)])
+        // Ödeme izni olan danışman (panelde Ayarlar → Rol izinleri'nden verilir).
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["app.payment"]).map { .metin($0) }),
+        ])])
+        let st: [(String, [String: FSDeger])] = [
+            ("potansiyel", statuBelgesi("Potansiyel Müşteri", musteri: "Görüşme", sira: 10, silme: 60)),
+            ("randevu-takip", statuBelgesi("Randevu Takipte", musteri: "Randevunuz takip ediliyor", gerekenler: ["odeme"], sira: 20)),
+            ("konsoloslukta", statuBelgesi("Konsoloslukta İşlemde", musteri: "Konsoloslukta", gerekenler: ["fis", "takipKodu"], sira: 60)),
+        ]
+        for (id, a) in st { try await owner.belgeYaz("statuses/\(id)", alanlar: a) }
+        let statuler = st.map { Statu(kimlik: $0.0, alanlar: $0.1) }
+        let appId = "odm\(ek)"
+        let takipId = String(repeating: "d", count: 60) + ek
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-12\(ek)"), "year": .tam(2026), "month": .tam(12),
+            "country": .metin("italya"), "countryName": .metin("İtalya"), "firstName": .metin("CAN"), "lastName": .metin("ER"),
+            "passportLast3": .metin("111"), "statusId": .metin("potansiyel"), "statusName": .metin("Potansiyel Müşteri"),
+            "checklist": .harita([:]), "finalAt": .bos, "deleteAfter": .bos, "legalHold": .mantik(false),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+            "updatedAt": .zaman(Date()), "updatedBy": .metin(uid),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "odeme\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let calisan = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        XCTAssertTrue(calisan.yapabilir("app.payment"))
+        func adim(_ no: Int, _ y: [FirestoreIstemci.Yazim]) async throws {
+            do { try await ben.isle(y) } catch { XCTFail("adım \(no): \(error)"); throw error }
+        }
+        func basvuru() async throws -> Basvuru {
+            let a = try await ben.belge("applications/\(appId)")
+            return Basvuru(kimlik: appId, alanlar: try XCTUnwrap(a))
+        }
+
+        // 1) Fiyat
+        var b = try await basvuru()
+        try await adim(1, BasvuruIslemi.fiyat(b, tutar: 4500, paraBirimi: "TRY", aciklama: "Hizmet bedeli", calisan: calisan))
+        let fiyatBelgesi = try await ben.belge("applications/\(appId)/private/fiyat")
+        XCTAssertEqual(Fiyat(alanlar: fiyatBelgesi)?.tutar, 4500)
+
+        // 2) Dekontlu ödeme (1,9 MB → 3 parça) + kasa geliri + otomatik "Randevu Takipte".
+        let dekont = HazirDosya(ad: "dekont.jpg", mime: "image/jpeg", bayt: Data((0..<1_900_000).map { UInt8($0 % 251) }))
+        let girdi = BasvuruIslemi.OdemeGirdisi(tarih: Tr.bugun(), tutar: 2250.5, paraBirimi: "TRY", yontem: "havale",
+                                               onayKodu: "EFT-123", aciklama: "Kapora")
+        let r = BasvuruIslemi.odeme(b, girdi, dekont: dekont, statuler: statuler, statuDegistirir: true, takipId: takipId,
+                                    acikNotlar: [], saklamaGun: 60, calisan: calisan)
+        XCTAssertEqual(r.statu?.id, "randevu-takip")
+        try await adim(2, r.yazimlar)
+        b = try await basvuru()
+        XCTAssertEqual(b.odemeSayisi, 1)
+        XCTAssertEqual(b.statuId, "randevu-takip")
+        let kasa = try await owner.belge("kasa/\(r.odemeId)")
+        XCTAssertEqual(kasa?["tutar"], .ondalik(2250.5))
+        XCTAssertEqual(kasa?["tur"], .metin("gelir"))
+        let odemeler = try await ben.sorgu(koleksiyon: "odemeler", sirala: ("at", .azalan), ust: "applications/\(appId)")
+            .map { Odeme(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        let odeme = try XCTUnwrap(odemeler.first)
+        XCTAssertEqual(odeme.tutar, 2250.5)
+        let dosyaId = try XCTUnwrap(odeme.dosyaId)
+        let bilgiBelgesi = try await ben.belge("applications/\(appId)/dosyalar/\(dosyaId)")
+        let bilgi = DosyaBilgisi(kimlik: dosyaId, alanlar: try XCTUnwrap(bilgiBelgesi))
+        XCTAssertEqual(bilgi.parca, 3)
+        var parcalar: [[String: FSDeger]?] = []
+        for yol in bilgi.parcaYollari(ust: "applications/\(appId)") { parcalar.append(try await ben.belge(yol)) }
+        XCTAssertEqual(Dosya.birlestir(parcalar), dekont.bayt, "baytlar aynen geri gelmeli")
+
+        // 3) Dekontsuz ödeme, sonra dekont (statü zaten ileride: geçiş yok).
+        let r2 = BasvuruIslemi.odeme(b, BasvuruIslemi.OdemeGirdisi(tarih: Tr.bugun(), tutar: nil, paraBirimi: "EUR", yontem: "nakit",
+                                                                   onayKodu: "", aciklama: ""),
+                                     dekont: nil, statuler: statuler, statuDegistirir: true, takipId: takipId, acikNotlar: [],
+                                     saklamaGun: 60, calisan: calisan)
+        XCTAssertNil(r2.statu)
+        try await adim(3, r2.yazimlar)
+        b = try await basvuru()
+        let ikinciBelge = try await ben.belge("applications/\(appId)/odemeler/\(r2.odemeId)")
+        let ikinci = Odeme(kimlik: r2.odemeId, alanlar: try XCTUnwrap(ikinciBelge))
+        XCTAssertEqual(ikinci.dekontDurumu, "Dekont girilmedi")
+        try await adim(4, BasvuruIslemi.sonradanDekont(b, ikinci, dekont: HazirDosya(ad: "slip.pdf", mime: "application/pdf",
+                                                                                     bayt: Data("%PDF-1.4 ornek".utf8)), calisan: calisan))
+        let ikinciSonraBelge = try await ben.belge("applications/\(appId)/odemeler/\(r2.odemeId)")
+        XCTAssertNotNil(ikinciSonraBelge?["dosyaId"]?.metinDegeri)
+
+        // 4) Pasaport teslim fişi; takip kodu yokken konsolosluğa geçilmez, kod girilince geçilir.
+        try await adim(5, BasvuruIslemi.belge(b, tur: "takip", dosya: HazirDosya(ad: "fis.jpg", mime: "image/jpeg",
+                                                                                   bayt: Data(repeating: 7, count: 1000)), calisan: calisan))
+        var s = BasvuruIslemi.fisSonrasi(b, statuler: statuler, takipId: takipId, acikNotlar: [], evrakTamam: true, saklamaGun: 60, calisan: calisan)
+        XCTAssertTrue(s.engel.contains("konsolosluk takip kodu"))
+        try await adim(6, BasvuruIslemi.konsolosluk(b, kod: " ist 2026/55 ", calisan: calisan))
+        b = try await basvuru()
+        XCTAssertEqual(b.konsTakipKodu, "IST2026/55")
+        s = BasvuruIslemi.fisSonrasi(b, statuler: statuler, takipId: takipId, acikNotlar: [], evrakTamam: true, saklamaGun: 60, calisan: calisan)
+        XCTAssertEqual(s.statu?.id, "konsoloslukta")
+        try await adim(7, s.yazimlar)
+        b = try await basvuru()
+        XCTAssertEqual(b.statuId, "konsoloslukta")
+
+        // 5) Diğer belge ekle ve sil.
+        try await adim(8, BasvuruIslemi.belge(b, tur: "diger", dosya: HazirDosya(ad: "davet.pdf", mime: "application/pdf",
+                                                                                   bayt: Data(repeating: 1, count: 2000)), calisan: calisan))
+        let belgeler = try await ben.sorgu(koleksiyon: "dosyalar", kosullar: [.esit("tur", .metin("diger"))], ust: "applications/\(appId)")
+            .map { DosyaBilgisi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        let diger = try XCTUnwrap(belgeler.first)
+        try await adim(9, BasvuruIslemi.belgeSil(b, diger, calisan: calisan))
+        // Silinmiş belgeyi çalışan okuyamaz (kural belgenin türüne bakıyor); yönetici gözüyle bakılır.
+        let silinen = try await owner.belge("applications/\(appId)/dosyalar/\(diger.id)")
+        XCTAssertNil(silinen)
+    }
 }

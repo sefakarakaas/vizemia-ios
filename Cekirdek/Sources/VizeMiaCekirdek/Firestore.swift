@@ -11,6 +11,8 @@ public indirect enum FSDeger: Equatable {
     case ondalik(Double)
     case metin(String)
     case zaman(Date)
+    /// Bayt dizisi (Storage yok: belgeler Firestore'da 900 KB'lık parçalar).
+    case bayt(Data)
     case dizi([FSDeger])
     case harita([String: FSDeger])
 
@@ -19,6 +21,7 @@ public indirect enum FSDeger: Equatable {
     public var zamanDegeri: Date? { if case .zaman(let v) = self { return v }; return nil }
     public var diziDegeri: [FSDeger]? { if case .dizi(let v) = self { return v }; return nil }
     public var haritaDegeri: [String: FSDeger]? { if case .harita(let v) = self { return v }; return nil }
+    public var baytDegeri: Data? { if case .bayt(let v) = self { return v }; return nil }
     public var tamDegeri: Int? {
         switch self {
         case .tam(let v): return v
@@ -41,6 +44,7 @@ public indirect enum FSDeger: Equatable {
         else if let v = o["doubleValue"] as? Double { self = .ondalik(v) }
         else if let v = o["doubleValue"] as? Int { self = .ondalik(Double(v)) }
         else if let v = o["timestampValue"] as? String, let d = FSDeger.zamanOku(v) { self = .zaman(d) }
+        else if let v = o["bytesValue"] as? String, let d = Data(base64Encoded: v) { self = .bayt(d) }
         else if let v = o["arrayValue"] as? [String: Any] {
             self = .dizi(((v["values"] as? [Any]) ?? []).map { FSDeger(json: $0) })
         }
@@ -65,6 +69,7 @@ public indirect enum FSDeger: Equatable {
         case .ondalik(let v): return ["doubleValue": v]
         case .metin(let v): return ["stringValue": v]
         case .zaman(let v): return ["timestampValue": FSDeger.zamanYaz(v)]
+        case .bayt(let v): return ["bytesValue": v.base64EncodedString()]
         case .dizi(let v): return ["arrayValue": ["values": v.map { $0.json }]]
         case .harita(let v): return ["mapValue": ["fields": v.mapValues { $0.json }]]
         }

@@ -33,6 +33,8 @@ final class EkipOturumu {
     private(set) var evrakAyari = EvrakAyari(belge: nil)
     private(set) var epostaAyari = EpostaAyari(belge: nil)
     private(set) var smsAyari = SmsAyari(belge: nil)
+    /// Kasa bildirimi (Ayarlar → Kasa ve raporlar → servis adresi): ödeme girilince ekibe haber.
+    private(set) var kasaServisUrl = ""
 
     private var oturum: KimlikIstemci.Oturum?
     private var arkaPlanaGecis: Date?
@@ -119,6 +121,7 @@ final class EkipOturumu {
             async let evrak = f.belge("settings/checklist")
             async let eposta = f.belge("settings/eposta")
             async let sms = f.belge("settings/sms")
+            async let kasa = f.belge("settings/kasa")
             guard let e = try await emp else { durum = .yetkisiz; return }
             let c = Calisan(uid: o.uid, belge: e, izinBelgesi: try? await izin)
             guard c.aktif else { durum = .yetkisiz; calisan = c; return }
@@ -132,6 +135,8 @@ final class EkipOturumu {
             evrakAyari = EvrakAyari(belge: try? await evrak)
             epostaAyari = EpostaAyari(belge: try? await eposta)
             smsAyari = SmsAyari(belge: try? await sms)
+            let k = ((try? await kasa) ?? nil)?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
+            kasaServisUrl = k.range(of: "^https://script\\.google\\.com/macros/s/[\\w-]+/exec$", options: .regularExpression) != nil ? k : ""
             durum = .acik
             if let s = try? await f.sorgu(koleksiyon: "statuses", sinir: 100) {
                 statuler = s.map { Statu(kimlik: $0.kimlik, alanlar: $0.alanlar) }.sorted { $0.sira < $1.sira }
@@ -145,6 +150,16 @@ final class EkipOturumu {
     }
 
     func yapabilir(_ izin: String) -> Bool { calisan?.yapabilir(izin) ?? false }
+
+    /// Ödeme kaydı ekibe bildirilsin (panel: kasa-servis.js → kasaBildir). Cevap beklenmez.
+    func kasaBildir(_ id: String) {
+        guard !kasaServisUrl.isEmpty, let u = URL(string: kasaServisUrl) else { return }
+        var i = URLRequest(url: u)
+        i.httpMethod = "POST"
+        i.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
+        i.httpBody = try? JSONSerialization.data(withJSONObject: ["tur": "kasa", "id": id])
+        URLSession.shared.dataTask(with: i).resume()
+    }
 
     // MARK: - Face ID kilidi
 

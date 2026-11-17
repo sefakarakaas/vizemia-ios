@@ -138,8 +138,15 @@ final class BasvuruDetayVerisi {
     private(set) var yukleniyor = false
     private(set) var bulunamadi = false
     private(set) var hata: String?
+    /// Ödeme izni varsa (app.payment): alınan ödemeler ve verilen fiyat.
+    private(set) var odemeler: [Odeme] = []
+    private(set) var fiyat: Fiyat?
+    /// Görebildiği belgeler (randevu kağıdı, fiş, diğer: app.sensitive; dekont: app.payment).
+    private(set) var dosyalar: [DosyaBilgisi] = []
 
     init(kimlik: String) { self.kimlik = kimlik }
+
+    var yol: String { "applications/\(kimlik)" }
 
     var iletisim: MusteriIletisimi? { form.map { MusteriIletisimi(form: $0) } }
     var acikNotlar: [BasvuruNotu] { notlar.filter(\.musteriyeGorunur) }
@@ -174,6 +181,7 @@ final class BasvuruDetayVerisi {
             form = veriBelgesi.map { $0["form"]?.haritaDegeri ?? [:] }
             let grupBelgeleri: [FirestoreIstemci.Belge] = (try? await uyeler) ?? []
             grup = grupBelgeleri.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            await ekleriYukle(ekip, f)
             basvuru = b
             hata = nil
         } catch FirestoreHatasi.izinYok {
@@ -189,11 +197,33 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar }
+
+    /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
+    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar]) async {
+        let odeme = ekip.yapabilir("app.payment"), hassas = ekip.yapabilir("app.sensitive")
+        if odeme && parcalar.contains(.odemeler),
+           let l = try? await f.sorgu(koleksiyon: "odemeler", sirala: ("at", .azalan), sinir: 50, ust: yol) {
+            odemeler = l.map { Odeme(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        }
+        if odeme && parcalar.contains(.fiyat) { fiyat = Fiyat(alanlar: (try? await f.belge("\(yol)/private/fiyat")) ?? nil) }
+        if parcalar.contains(.dosyalar) {
+            var l: [DosyaBilgisi] = []
+            if hassas, let b = try? await f.sorgu(koleksiyon: "dosyalar", kosullar: [
+                .icinde("tur", [.metin("randevu"), .metin("takip"), .metin("diger")])], sinir: 50, ust: yol) {
+                l += b.map { DosyaBilgisi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            }
+            if odeme, let b = try? await f.sorgu(koleksiyon: "dosyalar", kosullar: [.esit("tur", .metin("odeme"))], sinir: 50, ust: yol) {
+                l += b.map { DosyaBilgisi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            }
+            dosyalar = l.sorted { ($0.zaman ?? .distantPast) > ($1.zaman ?? .distantPast) }
+        }
+    }
 
     /// İşlemden sonra yalnız değişen parçalar yeniden okunur.
-    private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci) async {
-        let yol = "applications/\(kimlik)"
+    private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci, _ ekip: EkipOturumu) async {
+        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar])
+        if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
         if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
         if parcalar.contains(.gecmis),
            let l = try? await f.sorgu(koleksiyon: "log", sirala: ("at", .azalan), sinir: Self.gecmisSiniri, ust: yol) {
@@ -217,7 +247,7 @@ final class BasvuruDetayVerisi {
         do {
             let f = try await ekip.istemci()
             try await f.isle(y)
-            await yenile(parcalar, f)
+            await yenile(parcalar, f, ekip)
             return nil
         } catch FirestoreHatasi.izinYok {
             return "Bu işlem için yetkiniz yok ya da başvurunun şartları tamamlanmamış."
@@ -306,6 +336,84 @@ final class BasvuruDetayVerisi {
         return await isle(BasvuruIslemi.kontrolEdildi(b, calisan: c), ekip, yenile: [.basvuru])
     }
 
+    // MARK: Ödeme, fiyat, belgeler
+
+    func odemeKaydet(_ o: BasvuruIslemi.OdemeGirdisi, dekont: HazirDosya?, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        let hatalar = OdemeKurali.hatalar(tarih: o.tarih, tutar: o.tutar, paraBirimi: o.paraBirimi, yontem: o.yontem,
+                                          onayKodu: o.onayKodu, aciklama: o.aciklama, bugun: Tr.bugun())
+        if !hatalar.isEmpty { return (false, hatalar.joined(separator: " ")) }
+        let r = BasvuruIslemi.odeme(b, o, dekont: dekont, statuler: ekip.statuler, statuDegistirir: ekip.yapabilir("app.status"),
+                                    takipId: takipId, acikNotlar: acikNotlar, saklamaGun: ekip.saklamaGun, calisan: c)
+        if let h = await isle(r.yazimlar, ekip, yenile: [.basvuru, .gecmis, .odemeler, .dosyalar]) { return (false, h) }
+        ekip.kasaBildir(r.odemeId)
+        let dekontNotu = dekont == nil ? " Dekont girilmedi: sonradan yükleyebilirsiniz." : ""
+        if let s = r.statu { return (true, "Ödeme kaydedildi; başvuru \"\(s.ad)\" statüsüne geçti.\(dekontNotu)") }
+        return (true, "Ödeme kaydedildi.\(dekontNotu)")
+    }
+
+    func sonradanDekont(_ o: Odeme, dekont: HazirDosya, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        return await isle(BasvuruIslemi.sonradanDekont(b, o, dekont: dekont, calisan: c), ekip, yenile: [.gecmis, .odemeler, .dosyalar])
+    }
+
+    func fiyatKaydet(tutar: Double?, paraBirimi: String, aciklama: String, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        guard let t = tutar, t > 0, t <= 10_000_000 else { return "Geçerli bir fiyat girin." }
+        return await isle(BasvuruIslemi.fiyat(b, tutar: t, paraBirimi: paraBirimi, aciklama: aciklama, calisan: c), ekip, yenile: [.fiyat, .gecmis])
+    }
+
+    /// Takip kodu; fiş önceden yüklendiyse ve statü takip kodu bekliyorsa konsolosluğa geçer.
+    func konsoloslukKaydet(_ kod: String, evrakTamam: Bool, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        let k = KonsoloslukKodu.temizle(kod)
+        if !k.isEmpty && !KonsoloslukKodu.gecerli(k) { return (false, "Kod 3–60 karakter; harf, rakam ve / . _ - olabilir.") }
+        if k == b.konsTakipKodu { return (false, "Kod değişmedi.") }
+        if let h = await isle(BasvuruIslemi.konsolosluk(b, kod: k, calisan: c), ekip, yenile: [.basvuru, .gecmis]) { return (false, h) }
+        if !k.isEmpty && dosyalar.contains(where: { $0.tur == "takip" }) {
+            return await fisSonrasi(evrakTamam: evrakTamam, ekip: ekip, onEk: "Takip kodu kaydedildi.")
+        }
+        return (true, "Takip kodu kaydedildi.")
+    }
+
+    /// Belge yükle: pasaport teslim fişi ("takip") ya da diğer belge.
+    func belgeYukle(tur: String, dosya: HazirDosya, evrakTamam: Bool, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        if let h = await isle(BasvuruIslemi.belge(b, tur: tur, dosya: dosya, calisan: c), ekip, yenile: [.gecmis, .dosyalar]) { return (false, h) }
+        if tur == "takip" { return await fisSonrasi(evrakTamam: evrakTamam, ekip: ekip, onEk: "Pasaport teslim fişi yüklendi.") }
+        return (true, "Belge yüklendi.")
+    }
+
+    private func fisSonrasi(evrakTamam: Bool, ekip: EkipOturumu, onEk: String) async -> (tamam: Bool, mesaj: String) {
+        guard ekip.yapabilir("app.status"), let b = basvuru, let c = ekip.calisan, let t = takipId else { return (true, onEk) }
+        let r = BasvuruIslemi.fisSonrasi(b, statuler: ekip.statuler, takipId: t, acikNotlar: acikNotlar, evrakTamam: evrakTamam,
+                                         saklamaGun: ekip.saklamaGun, calisan: c)
+        if !r.engel.isEmpty { return (true, "\(onEk) \(r.engel)") }
+        guard let s = r.statu else { return (true, onEk) }
+        if let h = await isle(r.yazimlar, ekip, yenile: [.basvuru, .gecmis]) {
+            return (true, "\(onEk) Statü değiştirilemedi: \(h)")
+        }
+        return (true, "\(onEk) Başvuru \"\(s.ad)\" statüsüne geçti.")
+    }
+
+    func belgeSil(_ d: DosyaBilgisi, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        return await isle(BasvuruIslemi.belgeSil(b, d, calisan: c), ekip, yenile: [.gecmis, .dosyalar])
+    }
+
+    /// Belgenin parçalarını indirip geçici bir dosyaya yazar (önizleme / paylaşma için).
+    func belgeDosyasi(_ d: DosyaBilgisi, ekip: EkipOturumu) async throws -> URL {
+        let f = try await ekip.istemci()
+        var parcalar: [[String: FSDeger]?] = []
+        for p in d.parcaYollari(ust: yol) { parcalar.append(try await f.belge(p)) }
+        guard let veri = Dosya.birlestir(parcalar) else { throw FirestoreHatasi.sunucu(404) }
+        let klasor = FileManager.default.temporaryDirectory.appendingPathComponent("belgeler", isDirectory: true)
+        try? FileManager.default.createDirectory(at: klasor, withIntermediateDirectories: true)
+        let url = klasor.appendingPathComponent(Dosya.adTemizle(d.ad))
+        try veri.write(to: url, options: [.atomic, .completeFileProtection])
+        return url
+    }
+
     #if DEBUG
     private func ornek() {
         guard basvuru == nil else { return }
@@ -319,6 +427,15 @@ final class BasvuruDetayVerisi {
                               zaman: simdi.addingTimeInterval(-3 * 3600))]
         ustNotlar = [UstNot(kimlik: "u1", alanlar: ["metin": .metin("Yalnız öğleden sonra aranmalı."), "by": .metin("x"),
                                                     "byName": .metin("Ezgi"), "at": .zaman(simdi.addingTimeInterval(-7200))])]
+        odemeler = [Odeme(kimlik: "o1", alanlar: [
+            "tarih": .metin(Tr.bugun(simdi.addingTimeInterval(-2 * 86_400))), "tutar": .tam(2500), "paraBirimi": .metin("TRY"),
+            "yontem": .metin("havale"), "onayKodu": .metin("EFT-48213"), "aciklama": .metin("Kapora"), "dosyaId": .bos,
+            "byName": .metin("Sefa Karakaş"), "at": .zaman(simdi.addingTimeInterval(-2 * 86_400))])]
+        fiyat = Fiyat(alanlar: ["tutar": .tam(4500), "paraBirimi": .metin("TRY"), "aciklama": .metin("Hizmet bedeli, harç hariç"),
+                                "byName": .metin("Sefa Karakaş"), "updatedAt": .zaman(simdi.addingTimeInterval(-3 * 86_400))])
+        dosyalar = [DosyaBilgisi(kimlik: "d1", alanlar: ["tur": .metin("diger"), "ad": .metin("davet-mektubu.pdf"),
+                                                        "mime": .metin("application/pdf"), "boyut": .tam(412_000), "parca": .tam(1),
+                                                        "byName": .metin("Ezgi"), "at": .zaman(simdi.addingTimeInterval(-86_400))])]
         gecmis = [
             GecmisSatiri(kimlik: "g1", alanlar: ["type": .metin("checklist"), "text": .metin("Pasaport: geldi"), "byName": .metin("Ezgi"),
                                                  "at": .zaman(simdi.addingTimeInterval(-3600))]),

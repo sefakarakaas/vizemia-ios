@@ -31,6 +31,6 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 
 - `main`'e gönderilen her kod değişikliği **Derle ve test et** işini çalıştırır (çekirdek testleri + simülatör derlemesi, ~2 dk Mac).
 - Ekranların nasıl göründüğünü görmek için **Ekran görüntüleri** işi elle çalıştırılır (~8 dk Mac); görüntüler işin dosyalarında (`ekran-goruntuleri`).
-- Özel depoda Mac dakikaları 10 kat sayılır. Değişiklikleri toplu gönder; yalnız `.md` değişikliği derleme başlatmaz.
+- Depo herkese açık: GitHub Actions dakikaları ücretsiz (özel olsaydı Mac dakikası 10 kat sayılırdı). Yine de değişiklikleri toplu gönder; yalnız `.md` değişikliği derleme başlatmaz.
 - Ekran kodu burada derlenemediği için dikkatli yazılır: bilinen, yerleşik SwiftUI arayüzleri (iOS 17+), belirsiz tür çıkarımlarından kaçınma (`Color.white`, `Text.LineStyle.single` gibi açık yazım).
 - TestFlight: **TestFlight'a gönder** işi (README → TestFlight kurulumu). Anahtarlar yalnız GitHub gizli ayarlarında durur.
