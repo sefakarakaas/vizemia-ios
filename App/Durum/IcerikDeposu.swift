@@ -14,6 +14,13 @@ final class IcerikDeposu {
     private(set) var sonYenileme: Date?
 
     private let kaynak: IcerikKaynagi
+    /// Uygulamayla gelen evrak kataloğu: siteden inen dosya eskiyse (alan yoksa) bu kullanılır.
+    private let gomuluEvrak: EvrakKatalogu?
+
+    /// Panelin evrak kataloğu (ekip ekranı, evrak kontrol listesi).
+    var evrak: EvrakKatalogu {
+        akis.evrak ?? gomuluEvrak ?? EvrakKatalogu(etiketler: [:], genel: [], kosullu: [], ulkeler: [:])
+    }
 
     var mesai: Mesai { Mesai(ayar: akis.mesai) }
     var iletisim: Iletisim { akis.iletisim }
@@ -28,6 +35,7 @@ final class IcerikDeposu {
         // Uygulamayla gelen ve cihazdaki kopyadan yenisi kazanır (uygulama
         // güncellenmiş ama cihaz uzun süredir çevrimdışıysa gömülü daha yenidir).
         let gomulu: Akis? = IcerikKaynagi.gomulu(.uygulama)
+        gomuluEvrak = gomulu?.evrak
         let kayitli: Akis? = kaynak.kayitli(.uygulama)
         if let k = kayitli, k.surum == 1, !k.sayfalar.isEmpty, k.uretim >= (gomulu?.uretim ?? "") {
             akis = k

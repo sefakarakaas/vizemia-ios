@@ -95,6 +95,30 @@ final class EkranGoruntuleri: XCTestCase {
         sekme("Hesabım")
         bekle(1)
         cek("ekip-hesap")
+
+        // Başvurular: ana sayfa → Müşteriler → Başvurular → ayrıntı.
+        sekme("Ana Sayfa")
+        let musteriler = dugme("Müşteriler")
+        if !gorunur(musteriler) { surukle(0.80, 0.30) }
+        musteriler.tap()
+        let basvurular = dugme("Başvurular")
+        XCTAssertTrue(basvurular.waitForExistence(timeout: 8), "Müşteriler bölümü açılmadı")
+        basvurular.tap()
+        XCTAssertTrue(metin("ZEYNEP ARSLAN").waitForExistence(timeout: 10), "Başvuru listesi boş")
+        bekle(1)
+        cek("ekip-basvurular")
+        dugme("Aktaş ailesi").tap()
+        bekle(1)
+        cek("ekip-basvurular-grup")
+        metin("ZEYNEP ARSLAN").tap()
+        XCTAssertTrue(metin("Evrak kontrol listesi").waitForExistence(timeout: 8), "Başvuru ayrıntısı açılmadı")
+        bekle(1)
+        cek("ekip-basvuru")
+        for i in 2...6 {
+            surukle(0.85, 0.25)
+            bekle(0.6)
+            cek("ekip-basvuru-\(i)")
+        }
     }
 
     func testEkranlar() {

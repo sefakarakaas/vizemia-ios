@@ -26,6 +26,13 @@ final class EkipOturumu {
     private(set) var kilitli = false
     /// Uygulamanın ekip görünümünde mi açılacağı (müşteri görünümüne geçilebilir).
     var ekipGorunumu = true
+    /// Ayarlar (panel: loadSettings). Son adımdan sonra saklama süresi ve
+    /// "yakında silinecek" uyarısının gün sayısı (settings/general).
+    private(set) var saklamaGun = 60
+    private(set) var uyariGun = 7
+    private(set) var evrakAyari = EvrakAyari(belge: nil)
+    private(set) var epostaAyari = EpostaAyari(belge: nil)
+    private(set) var smsAyari = SmsAyari(belge: nil)
 
     private var oturum: KimlikIstemci.Oturum?
     private var arkaPlanaGecis: Date?
@@ -42,6 +49,8 @@ final class EkipOturumu {
         if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") {
             calisan = Calisan(uid: "ornek", belge: ["username": .metin("sefa"), "displayName": .metin("Sefa Karakaş"),
                                                     "role": .metin("admin"), "active": .mantik(true)], izinBelgesi: nil)
+            statuler = OrnekEkip.statuler
+            smsAyari = SmsAyari(belge: ["enabled": .mantik(true)])
             durum = .acik
             return
         }
@@ -107,12 +116,22 @@ final class EkipOturumu {
             async let emp = f.belge("employees/\(o.uid)")
             async let izin = f.belge("settings/permissions")
             async let genel = f.belge("settings/general")
+            async let evrak = f.belge("settings/checklist")
+            async let eposta = f.belge("settings/eposta")
+            async let sms = f.belge("settings/sms")
             guard let e = try await emp else { durum = .yetkisiz; return }
             let c = Calisan(uid: o.uid, belge: e, izinBelgesi: try? await izin)
             guard c.aktif else { durum = .yetkisiz; calisan = c; return }
             calisan = c
             AnahtarZinciri.yaz(c, servis: EkipOturumu.servis, hesap: "calisan")
-            if let g = try? await genel, let d = g["idleMinutes"]?.tamDegeri, d >= 1 { bosDakika = d }
+            if let g = try? await genel {
+                if let d = g["idleMinutes"]?.tamDegeri, d >= 1 { bosDakika = d }
+                if let d = g["retentionDays"]?.tamDegeri, d >= 1 { saklamaGun = d }
+                if let d = g["warnDays"]?.tamDegeri, d >= 1 { uyariGun = d }
+            }
+            evrakAyari = EvrakAyari(belge: try? await evrak)
+            epostaAyari = EpostaAyari(belge: try? await eposta)
+            smsAyari = SmsAyari(belge: try? await sms)
             durum = .acik
             if let s = try? await f.sorgu(koleksiyon: "statuses", sinir: 100) {
                 statuler = s.map { Statu(kimlik: $0.kimlik, alanlar: $0.alanlar) }.sorted { $0.sira < $1.sira }

@@ -27,9 +27,11 @@ public struct Akis: Decodable, Equatable {
     public var kitalar: [Kita]
     public var sss: [Soru]
     public var harclar: [HarcGrubu]
+    /// Panelin evrak kataloğu (ekip ekranı). Eski dosyada yok: gömülü kopyadaki kullanılır.
+    public var evrak: EvrakKatalogu?
     public var sayfalar: [Sayfa]
 
-    enum Anahtar: String, CodingKey { case surum, uretim, iletisim, servisUrl, mesai, surec, kitalar, sss, harclar, sayfalar }
+    enum Anahtar: String, CodingKey { case surum, uretim, iletisim, servisUrl, mesai, surec, kitalar, sss, harclar, evrak, sayfalar }
 
     public init(from decoder: Decoder) throws {
         let c = Coz(c: try decoder.container(keyedBy: Anahtar.self))
@@ -42,6 +44,7 @@ public struct Akis: Decodable, Equatable {
         kitalar = c.dizi(.kitalar)
         sss = c.dizi(.sss)
         harclar = c.dizi(.harclar)
+        evrak = c.nesne(.evrak)
         sayfalar = c.dizi(.sayfalar)
     }
 

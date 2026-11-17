@@ -350,12 +350,19 @@ struct TalepDetayi: View {
             Text("Görüşme sonucu").font(.headline).foregroundStyle(Tema.lacivert)
             HStack(spacing: 8) {
                 ForEach(Talep.acikDurumlar, id: \.self) { d in
-                    Button(Talep.durumAdi(d, tur: t.tur)) {
+                    Button {
                         withAnimation(Hareket.yay) { durum = d }
+                    } label: {
+                        // "Arandı, ulaşılamadı" tek satıra sığmıyor: iki satır, kutular eş boy.
+                        Text(Talep.durumAdi(d, tur: t.tur))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .frame(maxHeight: .infinity)
                     }
                     .buttonStyle(SecimKutusu(secili: durum == d))
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
             Alan(etiket: "İç not", istegeBagli: true) {
                 TextField("Görüşmede ne konuşuldu, ne zaman yeniden aranacak…", text: $icNot, axis: .vertical)
                     .lineLimit(2...6)

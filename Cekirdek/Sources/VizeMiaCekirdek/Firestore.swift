@@ -156,14 +156,17 @@ public struct FirestoreIstemci {
         kosullar: [Kosul] = [],
         sirala: (String, Yon)? = nil,
         sinir: Int = 200,
-        ust: String? = nil
+        ust: String? = nil,
+        sonra: FSDeger? = nil
     ) async throws -> [Belge] {
         var istek = URLRequest(url: adres(ust.map { "\(kok)/\($0):runQuery" } ?? "\(kok):runQuery"))
         istek.httpMethod = "POST"
         istek.timeoutInterval = 20
         istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        istek.httpBody = try JSONSerialization.data(withJSONObject: ["structuredQuery": FirestoreIstemci.sorguYapisi(
-            koleksiyon: koleksiyon, kosullar: kosullar, sirala: sirala, sinir: sinir)])
+        var yapi = FirestoreIstemci.sorguYapisi(koleksiyon: koleksiyon, kosullar: kosullar, sirala: sirala, sinir: sinir)
+        // Sayfalama: sıralama alanının son görülen değerinden sonrası (panel: startAfter).
+        if let sonra { yapi["startAt"] = ["values": [sonra.json], "before": false] }
+        istek.httpBody = try JSONSerialization.data(withJSONObject: ["structuredQuery": yapi])
         let (veri, kod) = try await gonder(istek)
         guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
         return FirestoreIstemci.sorguCevabi(veri)
@@ -268,8 +271,69 @@ public struct FirestoreIstemci {
         ]
     }
 
+    /// Toplu yazımdaki tek işlem. Panelin `writeBatch` karşılığı: hepsi birlikte
+    /// yazılır ya da hiçbiri (kurallar `getAfter`/`existsAfter` ile birbirine bakıyor).
+    public enum Yazim: Equatable {
+        /// Var olan belgede yalnız verilen alanlar. `ic`: harita içindeki tek
+        /// anahtar ("checklist" → "eski-pasaport") — panelin `checklist.<id>` yazımı.
+        case guncelle(yol: String, alanlar: [String: FSDeger], ic: [String: [String: FSDeger]] = [:], zaman: [String] = [])
+        /// Yeni belge (varsa reddedilir).
+        case olustur(yol: String, alanlar: [String: FSDeger], zaman: [String] = [])
+        /// Belgeyi baştan yazar (varsa üzerine): panelin `batch.set`.
+        case yaz(yol: String, alanlar: [String: FSDeger], zaman: [String] = [])
+        case sil(yol: String)
+    }
+
+    /// Yazımları tek istekte (documents:commit) gönderir.
+    public func isle(_ yazimlar: [Yazim]) async throws {
+        guard !yazimlar.isEmpty else { return }
+        var istek = URLRequest(url: adres("\(kok):commit"))
+        istek.httpMethod = "POST"
+        istek.timeoutInterval = 30
+        istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        istek.httpBody = try JSONSerialization.data(withJSONObject: ["writes": yazimlar.map { yazimGovdesi($0) }])
+        let (_, kod) = try await gonder(istek)
+        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+    }
+
+    func yazimGovdesi(_ y: Yazim) -> [String: Any] {
+        let donustur = { (z: [String]) in z.map { ["fieldPath": FirestoreIstemci.alanYolu([$0]), "setToServerValue": "REQUEST_TIME"] } }
+        switch y {
+        case let .guncelle(yol, alanlar, ic, zaman):
+            var alan = alanlar.mapValues { $0.json }
+            var maske = alanlar.keys.sorted().map { FirestoreIstemci.alanYolu([$0]) }
+            for (ust, alt) in ic.sorted(by: { $0.key < $1.key }) {
+                alan[ust] = FSDeger.harita(alt).json
+                maske += alt.keys.sorted().map { FirestoreIstemci.alanYolu([ust, $0]) }
+            }
+            var g: [String: Any] = [
+                "update": ["name": "\(kok)/\(yol)", "fields": alan],
+                "updateMask": ["fieldPaths": maske],
+                "currentDocument": ["exists": true],
+            ]
+            if !zaman.isEmpty { g["updateTransforms"] = donustur(zaman) }
+            return g
+        case let .olustur(yol, alanlar, zaman), let .yaz(yol, alanlar, zaman):
+            var g: [String: Any] = ["update": ["name": "\(kok)/\(yol)", "fields": alanlar.mapValues { $0.json }]]
+            if case .olustur = y { g["currentDocument"] = ["exists": false] }
+            if !zaman.isEmpty { g["updateTransforms"] = donustur(zaman) }
+            return g
+        case let .sil(yol):
+            return ["delete": "\(kok)/\(yol)"]
+        }
+    }
+
+    /// Alan yolu: düz adlar olduğu gibi, tire gibi işaret içerenler ters tırnakla
+    /// ("checklist.`eski-pasaport`") — Firestore'un alan yolu kuralı.
+    static func alanYolu(_ parcalar: [String]) -> String {
+        parcalar.map { p in
+            p.eslesir("^[A-Za-z_][A-Za-z_0-9]*$") ? p
+                : "`" + p.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "`", with: "\\`") + "`"
+        }.joined(separator: ".")
+    }
+
     /// Firebase SDK'sının ürettiğiyle aynı biçimde 20 karakterlik rastgele kimlik.
-    static func yeniKimlik() -> String {
+    public static func yeniKimlik() -> String {
         let harfler = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
         var uretec = SystemRandomNumberGenerator()
         return String((0..<20).map { _ in harfler[Int.random(in: 0..<harfler.count, using: &uretec)] })

@@ -24,6 +24,19 @@ public struct Basvuru: Equatable, Identifiable {
     public var pasaportSon3: String
     public var sorumlu: String
     public var silinecek: Date?
+    public var sonAdimZamani: Date?
+    /// Silme bekletiliyor (itiraz, dava): yönetici açar.
+    public var bekletiliyor: Bool
+    /// Evrak kontrol listesi: evrak kimliği → geldi mi.
+    public var evraklar: [String: Bool]
+    public var odemeSayisi: Int
+    public var konsTakipKodu: String
+    public var konsTakipZamani: Date?
+    public var randevuMerkezi: String
+    public var grupId: String
+    public var grupAdi: String
+    /// Telefonda hızlı açılan başvurunun eksik alanları ("Bilgileri kontrol edin").
+    public var kontrolNotu: String
 
     public var id: String { kimlik }
 
@@ -45,6 +58,15 @@ public struct Basvuru: Equatable, Identifiable {
         pasaportSon3 = m("passportLast3")
         sorumlu = m("assignedName")
         silinecek = a["deleteAfter"]?.zamanDegeri
+        sonAdimZamani = a["finalAt"]?.zamanDegeri
+        bekletiliyor = a["legalHold"]?.mantikDegeri ?? false
+        evraklar = (a["checklist"]?.haritaDegeri ?? [:]).compactMapValues { $0.mantikDegeri }
+        odemeSayisi = a["odemeSayisi"]?.tamDegeri ?? 0
+        konsTakipKodu = m("konsTakipKodu")
+        konsTakipZamani = a["konsTakipTarih"]?.zamanDegeri
+        randevuMerkezi = m("randevuMerkezi")
+        grupId = m("grupId"); grupAdi = m("grupAdi")
+        kontrolNotu = m("reviewNote")
     }
 
     public var adSoyad: String {
@@ -84,5 +106,78 @@ public struct Basvuru: Equatable, Identifiable {
         case .ara: return d.gun == 0 ? "Bugün aranmalı (son gün)" : "Aranmalı (\(d.gun) gün içinde)"
         case .gecikti: return "Arama gecikti (\(d.gun) gün)"
         }
+    }
+}
+
+// MARK: - Liste
+
+/// Başvurular listesinin kuralları (panel: pages/applications.js → ApplicationsPage, grup.js).
+public enum BasvuruListesi {
+    /// "2026 029825", "2026029825" → "2026-029825"; geçersizse nil.
+    public static func takipKodu(_ s: String) -> String? {
+        let d = s.filter(\.isNumber)
+        guard d.count == 10 else { return nil }
+        let k = "\(d.prefix(4))-\(d.dropFirst(4))"
+        return k.eslesir("^[0-9]{4}-(0[1-9]|1[0-2])[0-9]{4}$") ? k : nil
+    }
+
+    /// Pasaportla arama dizininin anahtarı (lookup/{hash}).
+    public static func pasaportOzeti(_ s: String) -> String {
+        Ozet.sha256Hex("vizemia-pasaport|\(s.filter { $0 != " " && $0 != "-" }.uppercased())")
+    }
+
+    /// Tam aramada pasaport numarası gibi görünüyor mu (7–12 harf/rakam).
+    public static func pasaportGibi(_ s: String) -> Bool {
+        s.filter { $0 != " " && $0 != "-" }.eslesir("^[A-Za-z0-9]{7,12}$")
+    }
+
+    /// Yazarken süzme: ad soyad, takip kodu ya da pasaportun son 3 hanesi.
+    public static func suz(_ l: [Basvuru], _ terim: String) -> [Basvuru] {
+        let t = terim.kirpik.lowercased(with: Tr.yerel)
+        guard !t.isEmpty else { return l }
+        return l.filter { a in
+            "\(a.ad) \(a.soyad)".lowercased(with: Tr.yerel).contains(t)
+                || a.takipKodu.contains(t)
+                || (t.count == 3 && a.pasaportSon3.lowercased() == t)
+        }
+    }
+
+    public enum Satir: Identifiable, Equatable {
+        case tek(Basvuru)
+        case grup(id: String, ad: String, uyeler: [Basvuru])
+        public var id: String {
+            switch self {
+            case .tek(let a): return a.kimlik
+            case .grup(let id, _, _): return "grup:\(id)"
+            }
+        }
+    }
+
+    /// Aynı grubun en az iki üyesi listedeyse tek başlık altında, ilk üyenin yerinde.
+    public static func grupla(_ l: [Basvuru]) -> [Satir] {
+        var gruplar: [String: [Basvuru]] = [:]
+        for a in l where !a.grupId.isEmpty { gruplar[a.grupId, default: []].append(a) }
+        var cikti: [Satir] = []
+        var eklenen = Set<String>()
+        for a in l {
+            guard let u = gruplar[a.grupId], !a.grupId.isEmpty, u.count >= 2 else { cikti.append(.tek(a)); continue }
+            if eklenen.contains(a.grupId) { continue }
+            eklenen.insert(a.grupId)
+            cikti.append(.grup(id: a.grupId, ad: u.first { !$0.grupAdi.isEmpty }?.grupAdi ?? "Grup", uyeler: u))
+        }
+        return cikti
+    }
+
+    /// Grubun ortak ülkesi ya da "Karışık ülke".
+    public static func grupUlkesi(_ u: [Basvuru]) -> String {
+        var adlar: [String] = []
+        for a in u where !a.ulkeAdi.isEmpty && !adlar.contains(a.ulkeAdi) { adlar.append(a.ulkeAdi) }
+        return adlar.count == 1 ? adlar[0] : adlar.isEmpty ? "—" : "Karışık ülke"
+    }
+
+    /// Silinmeye kalan gün (bugün dâhil; geçmişse 0 ya da eksi).
+    public static func kalanGun(_ d: Date?, simdi: Date = Date()) -> Int? {
+        guard let d else { return nil }
+        return Int(ceil(d.timeIntervalSince(simdi) / 86_400))
     }
 }

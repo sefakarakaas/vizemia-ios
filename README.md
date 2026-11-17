@@ -10,7 +10,7 @@
 | **Harç & Kur** | `/harclar` | `uygulama.json`, `kur.json`, anlık kur servisi |
 | **Daha** | Ülke rehberleri, blog, SSS, destek formu, iletişim, hakkımızda | `uygulama.json`, Firestore `support` |
 
-Sıradaki adımlar: müşteri formu (`/form`) ve pasaport okutma, bildirimler, ardından çalışan girişi (panel).
+**Ekip:** Daha → Çalışan girişi (panelin kullanıcı adı ve şifresi): talepler, takvim, destek, başvurular (liste, statü, notlar, evrak, tekrar arama). Panelin öteki ekranları bölüm bölüm ekleniyor.
 
 ## "Beni unutma" (uygulamaya özel)
 

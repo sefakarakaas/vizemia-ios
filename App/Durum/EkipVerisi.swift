@@ -20,56 +20,81 @@ final class EkipVerisi {
     var ozet: TalepOzeti { TalepOzeti(talepler, bugun: bugun) }
     var acikDestek: Int { destek.filter { $0.durum == "new" }.count }
 
-    /// Açık talepleri, açık destek taleplerini ve takvimi okur. Yetkisi olmayan bölüm boş kalır.
+    /// Takvimin başvuru kısmı (randevular, tekrar aramalar): yalnız Takvim açılınca okunur.
+    private var randevular: [Basvuru] = []
+    private var tekrarlar: [Basvuru] = []
+    private var takvimYuklemesi: Date?
+    /// Başvurular listesi: ekrandan çıkıp girince yeniden okunmasın diye burada.
+    let basvurular = BasvuruListesiVerisi()
+
+    /// Firestore'un ücretsiz planında günde 50.000 belge okuma var ve panel,
+    /// site ve zamanlanmış işler de aynı kotayı kullanıyor. Her okunan belge
+    /// sayılıyor; bu yüzden ekranlar arasında gezinirken liste yeniden okunmaz:
+    /// en çok 5 dakikada bir (aşağı çekerek yenileme her zaman okur).
+    static let tazelik: TimeInterval = 5 * 60
+
+    /// Açık talepleri ve açık destek taleplerini okur. Yetkisi olmayan bölüm boş kalır.
     func yukle(_ ekip: EkipOturumu, zorla: Bool = false) async {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { ornekVeri(); return }
         #endif
-        if !zorla, let s = sonYukleme, Date().timeIntervalSince(s) < 20 { return }
+        if !zorla, let s = sonYukleme, Date().timeIntervalSince(s) < Self.tazelik { return }
         guard !yukleniyor else { return }
         yukleniyor = true
         defer { yukleniyor = false }
         do {
             let f = try await ekip.istemci()
             let acik = Talep.acikDurumlar.map { FSDeger.metin($0) }
+            // Panelle aynı sınır (Talepler: koleksiyon başına 200).
             async let cb: [FirestoreIstemci.Belge] = ekip.yapabilir("lead.view")
-                ? f.sorgu(koleksiyon: "callback", kosullar: [.icinde("status", acik)], sirala: ("createdAt", .azalan), sinir: 300) : []
+                ? f.sorgu(koleksiyon: "callback", kosullar: [.icinde("status", acik)], sirala: ("createdAt", .azalan), sinir: 200) : []
             async let ar: [FirestoreIstemci.Belge] = ekip.yapabilir("lead.view")
-                ? f.sorgu(koleksiyon: "applicationRequests", kosullar: [.icinde("status", acik)], sirala: ("createdAt", .azalan), sinir: 300) : []
+                ? f.sorgu(koleksiyon: "applicationRequests", kosullar: [.icinde("status", acik)], sirala: ("createdAt", .azalan), sinir: 200) : []
             async let ds: [FirestoreIstemci.Belge] = ekip.yapabilir("support.view")
-                ? f.sorgu(koleksiyon: "support", kosullar: [.icinde("status", [.metin("new"), .metin("open")])], sirala: ("createdAt", .azalan), sinir: 200) : []
+                ? f.sorgu(koleksiyon: "support", kosullar: [.icinde("status", [.metin("new"), .metin("open")])], sirala: ("createdAt", .azalan), sinir: 100) : []
             let t = try await cb.map { Talep(tur: .geriArama, kimlik: $0.kimlik, alanlar: $0.alanlar) }
                 + (try await ar).map { Talep(tur: .basvuru, kimlik: $0.kimlik, alanlar: $0.alanlar) }
             talepler = Talep.sirala(t.filter { !$0.silindi })
             destek = try await ds.map { DestekTalebi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
             hata = nil
             sonYukleme = Date()
-            await takvimiYukle(ekip, f: f)
+            takvimiKur(ekip)
         } catch KimlikIstemci.Hata.oturumBitti {
             hata = KimlikIstemci.Hata.oturumBitti.mesaj
         } catch FirestoreHatasi.izinYok {
             hata = "Bu bilgileri görme yetkiniz yok."
+        } catch FirestoreHatasi.sunucu(429) {
+            hata = "Veritabanının günlük okuma sınırı doldu; sınır her gün 11.00'de yenilenir."
         } catch {
             hata = "Bilgiler yüklenemedi. İnternet bağlantınızı kontrol edin."
         }
     }
 
-    /// Randevular (bu ay ± bir hafta) ve tekrar arama aralığı açılan başvurular.
-    private func takvimiYukle(_ ekip: EkipOturumu, f: FirestoreIstemci) async {
-        var randevular: [Basvuru] = [], tekrarlar: [Basvuru] = []
-        if ekip.yapabilir("app.view") {
-            let simdi = Date()
-            let bas = simdi.addingTimeInterval(-45 * 86_400), son = simdi.addingTimeInterval(75 * 86_400)
-            if let r = try? await f.sorgu(koleksiyon: "applications", kosullar: [
-                .enAz("appointmentAt", .zaman(bas)), .kucuk("appointmentAt", .zaman(son))], sinir: 500) {
-                randevular = r.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
-            }
-            let aranir = ekip.statuler.filter { $0.tekrarAranir }.map { FSDeger.metin($0.id) }.prefix(30)
-            if !aranir.isEmpty, let r = try? await f.sorgu(koleksiyon: "applications",
-                                                          kosullar: [.icinde("statusId", Array(aranir))], sinir: 500) {
-                tekrarlar = r.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
-            }
+    /// Takvim ekranı açılınca: randevular (son bir hafta – önümüzdeki iki ay) ve
+    /// tekrar arama aralığındaki başvurular. 15 dakikada bir okunur.
+    func takvimiYukle(_ ekip: EkipOturumu, zorla: Bool = false) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return }
+        #endif
+        await yukle(ekip, zorla: zorla)
+        if !zorla, let s = takvimYuklemesi, Date().timeIntervalSince(s) < 3 * Self.tazelik { return }
+        guard ekip.yapabilir("app.view"), let f = try? await ekip.istemci() else { return }
+        let simdi = Date()
+        let bas = simdi.addingTimeInterval(-7 * 86_400), son = simdi.addingTimeInterval(62 * 86_400)
+        if let r = try? await f.sorgu(koleksiyon: "applications", kosullar: [
+            .enAz("appointmentAt", .zaman(bas)), .kucuk("appointmentAt", .zaman(son))], sinir: 200) {
+            randevular = r.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
         }
+        let aranir = ekip.statuler.filter { $0.tekrarAranir }.map { FSDeger.metin($0.id) }.prefix(30)
+        if !aranir.isEmpty, let r = try? await f.sorgu(koleksiyon: "applications",
+                                                      kosullar: [.icinde("statusId", Array(aranir))], sinir: 200) {
+            tekrarlar = r.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        }
+        takvimYuklemesi = Date()
+        takvimiKur(ekip)
+    }
+
+    private func takvimiKur(_ ekip: EkipOturumu) {
         takvim = TakvimIsi.olustur(talepler: talepler, randevular: randevular, tekrarlar: tekrarlar,
                                    statuler: ekip.statuSozlugu, bugun: bugun)
     }
@@ -158,5 +183,6 @@ final class EkipVerisi {
 
     func temizle() {
         talepler = []; kapananlar = []; destek = []; takvim = []; sonYukleme = nil; hata = nil
+        randevular = []; tekrarlar = []; takvimYuklemesi = nil
     }
 }

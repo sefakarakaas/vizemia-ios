@@ -12,6 +12,10 @@ public struct Statu: Equatable, Identifiable, Codable {
     /// Tekrar arama aralığı (gün): ör. potansiyel müşteri 7–14 gün sonra aranır.
     public var aramaMin: Int?
     public var aramaMax: Int?
+    /// Bu statüde bu kadar gün kalan başvuru silinir (ör. potansiyel müşteri).
+    public var silmeGun: Int?
+    /// Bu statüye geçmeden önce tamamlanması gerekenler (GecisSarti sırasıyla).
+    public var gerekenler: [String]
 
     public init(kimlik: String, alanlar a: [String: FSDeger]) {
         id = kimlik
@@ -27,14 +31,19 @@ public struct Statu: Equatable, Identifiable, Codable {
         } ?? 0
         aramaMin = Statu.gun(a["aramaMin"])
         aramaMax = Statu.gun(a["aramaMax"])
+        silmeGun = Statu.gun(a["silmeGun"], enCok: 3650)
+        // Eski kayıtta yalnız odemeGerekli var (panel: basvuru-akisi.js → gerekenler).
+        let liste = a["gerekenler"]?.diziDegeri?.compactMap { $0.metinDegeri }
+            ?? ((a["odemeGerekli"]?.mantikDegeri ?? false) ? ["odeme"] : [])
+        gerekenler = GecisSarti.allCases.map(\.rawValue).filter { liste.contains($0) }
     }
 
-    /// 1–365 gün arası tam sayı; değilse yok (panel: gunSayisi).
-    static func gun(_ d: FSDeger?) -> Int? {
+    /// 1–en çok gün arası tam sayı; değilse yok (panel: gunSayisi).
+    static func gun(_ d: FSDeger?, enCok: Int = 365) -> Int? {
         var n: Int?
         if let t = d?.tamDegeri { n = t }
         if case .ondalik(let v)? = d { n = Int(v.rounded()) }
-        guard let x = n, x >= 1, x <= 365 else { return nil }
+        guard let x = n, x >= 1, x <= enCok else { return nil }
         return x
     }
 

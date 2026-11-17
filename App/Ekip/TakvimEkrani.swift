@@ -35,7 +35,7 @@ struct TakvimEkrani: View {
                     .padding(Tema.bosluk)
                 }
                 .ekranZemini()
-                .refreshable { await veri.yukle(ekip, zorla: true) }
+                .refreshable { await veri.takvimiYukle(ekip, zorla: true) }
             }
         }
         .navigationTitle("Takvim")
@@ -45,7 +45,7 @@ struct TakvimEkrani: View {
                     .disabled(secili == veri.bugun)
             }
         }
-        .task { await veri.yukle(ekip) }
+        .task { await veri.takvimiYukle(ekip) }
         .sheet(item: $bilgi) { is_ in BasvuruOzetiSayfasi(is_: is_).presentationDetents([.medium]) }
     }
 
@@ -81,7 +81,7 @@ struct TakvimEkrani: View {
             HStack {
                 Button { ayDegistir(-1) } label: { Image(systemName: "chevron.left") }
                 Spacer()
-                Text("\(Mesai.ayAdi[ay - 1]) \(yil)").font(.headline).foregroundStyle(Tema.lacivert)
+                Text(verbatim: "\(Mesai.ayAdi[ay - 1]) \(yil)").font(.headline).foregroundStyle(Tema.lacivert)
                     .contentTransition(.numericText())
                 Spacer()
                 Button { ayDegistir(1) } label: { Image(systemName: "chevron.right") }
@@ -199,6 +199,8 @@ struct TakvimEkrani: View {
 
         if x.bag.hasPrefix("talep:") {
             NavigationLink(value: EkipRota.talep(String(x.bag.dropFirst(6)))) { govde }.buttonStyle(.plain)
+        } else if x.bag.hasPrefix("basvuru:") {
+            NavigationLink(value: EkipRota.basvuru(String(x.bag.dropFirst(8)))) { govde }.buttonStyle(.plain)
         } else {
             Button { bilgi = x } label: { govde }.buttonStyle(.plain)
         }

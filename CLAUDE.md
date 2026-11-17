@@ -7,6 +7,7 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 - **Site tek kaynaktır.** İçerik `https://vizemia.com/assets/uygulama.json` dosyasından gelir (site deposu → `scripts/uygulama-akisi.mjs`). Bir metni uygulamaya elle yazmadan önce bu dosyaya eklenip eklenemeyeceğine bak. Sözleşme: alan kaldırılmaz, anlamı değiştirilmez; yalnız yeni alan eklenir (`Akis.swift` ↔ site deposundaki `tests/uygulama-akisi.test.mjs`).
 - **Kurallar sitedeki JavaScript'in karşılığıdır** (harf çevirme, telefon, T.C. kimlik, mesai, saat seçici, vitrin tarihi, takip anahtarı). Bir kural değişirse iki depoda birlikte değişir. Formların alan listesi `firestore.rules` içindeki `hasOnly` listesiyle aynı olmalı.
 - **Dil:** kod adları, yorumlar ve kullanıcıya görünen metinler Türkçe (site deposuyla aynı üslup). Yorumlar "neden"i anlatır.
+- **Okuma kotası:** Firestore ücretsiz planda günde 50.000 belge okuma (her dönen belge bir okuma); panel, site ve zamanlanmış işler aynı kotayı kullanır, dolunca hepsi 11.00'e (TR) kadar durur. Ekip ekranları listeyi en çok 5 dakikada bir okur (`EkipVerisi.tazelik`, aşağı çekince her zaman), ağır sorgular yalnız o ekran açılınca (takvim), işlemden sonra yalnız değişen parça yeniden okunur. Yeni ekran da böyle yazılır: sınır (`sinir:`) ekranda gösterilen kadar.
 - **Canlı veritabanına test verisi yazılmaz.** Form kayıtları Firestore emülatöründe denenir (README → Geliştirme). Ekran testi bilerek eksik form bırakır; hiçbir şey göndermez.
 
 ## "Beni unutma"
@@ -14,6 +15,11 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 - Durum: `App/Durum/TakipHafizasi.swift` (hatırlanan başvuru, son görülen durum), `Kasa.swift` (Anahtar Zinciri), `Bildirimler.swift` (izin, yerel bildirim, arka plan denetimi). Metinler ve değişiklik kuralı çekirdekte: `Selamlama`, `TakipKaydi.bildirim(onceki:)`.
 - Bildirim sunucudan gelmiyor (arka plan denetimi + yerel bildirim). Gerçek anlık bildirim (APNs) ayrı bir iş: Apple anahtarı, site deposunda gönderici ve cihaz kaydı kuralı gerekir.
 - Ekran testinde örnek kayıt: uygulama `-ornek-takip` ile açılırsa (yalnız geliştirme derlemesi) ağa ve Anahtar Zinciri'ne dokunmadan hatırlanan müşteri hâlini gösterir.
+
+## Ekip ekranları (panelin uygulama hâli)
+
+- Durum: `EkipOturumu` (giriş, izinler, statüler, ayarlar), `EkipVerisi` (talepler, destek, takvim, başvurular listesi), `BasvuruVerisi.swift` (liste ve ayrıntı). Yazımlar çekirdekte: `BasvuruIslemi` (statü + takip sayfası + mail/SMS kuyruğu tek yazımda), emülatörde `BasvuruEmulatorTests` gerçek kurallarla dener.
+- Ekran testinde örnek veri: `-ornek-ekip` (yalnız geliştirme derlemesi; ağa dokunmaz).
 
 ## Yapı
 
