@@ -21,8 +21,28 @@ permissions:
   contents: read
 
 jobs:
+  # Önce ucuz Linux makinesinde: anahtar Apple'da geçiyor mu, uygulama kaydı var mı?
+  # Sorun varsa hangi değerin yanlış olduğunu yazar; pahalı Mac işi başlamaz.
+  anahtar:
+    name: Anahtarı dene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: App Store Connect anahtarı ve uygulama kaydı
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: node Yapi/anahtar-dene.mjs
+
   testflight:
     name: İmzala ve yükle
+    needs: anahtar
     runs-on: macos-26
     timeout-minutes: 45
     env:
