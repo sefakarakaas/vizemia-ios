@@ -49,9 +49,12 @@ if (!anahtar || sorun) {
 // Apple'a sor
 const b64 = (x) => Buffer.from(typeof x === 'string' ? x : JSON.stringify(x)).toString('base64url');
 const simdi = Math.floor(Date.now() / 1000);
-const govde = `${b64({ alg: 'ES256', kid: keyId, typ: 'JWT' })}.${b64({ iss: issuer, iat: simdi, exp: simdi + 600, aud: 'appstoreconnect-v1' })}`;
-const imza = sign('sha256', Buffer.from(govde), { key: anahtar, dsaEncoding: 'ieee-p1363' }).toString('base64url');
-const jwt = `${govde}.${imza}`;
+function belirtec(yuk) {
+  const govde = `${b64({ alg: 'ES256', kid: keyId, typ: 'JWT' })}.${b64(yuk)}`;
+  const imza = sign('sha256', Buffer.from(govde), { key: anahtar, dsaEncoding: 'ieee-p1363' }).toString('base64url');
+  return `${govde}.${imza}`;
+}
+let jwt = belirtec({ iss: issuer, iat: simdi, exp: simdi + 600, aud: 'appstoreconnect-v1' });
 
 async function sor(yol) {
   const r = await fetch(`https://api.appstoreconnect.apple.com/v1/${yol}`, { headers: { Authorization: `Bearer ${jwt}` } });
@@ -62,6 +65,15 @@ async function sor(yol) {
 
 const apps = await sor(`apps?filter[bundleId]=${BUNDLE}&fields[apps]=name,bundleId`);
 if (apps.durum === 401) {
+  // Kişisel anahtar mı? (Individual Keys: Issuer ID yok, "sub": "user")
+  const takim = jwt;
+  jwt = belirtec({ sub: 'user', iat: simdi, exp: simdi + 600, aud: 'appstoreconnect-v1' });
+  const kisisel = await sor('apps?limit=1');
+  jwt = takim;
+  if (kisisel.durum === 200) {
+    hata('Bu anahtar "Individual Keys" sekmesinden oluşturulmuş (kişisel anahtar). Uygulama yüklemek için "Team Keys" sekmesinden, Access: Admin ile yeni anahtar gerekir.');
+    process.exit(1);
+  }
   hata('Apple anahtarı reddetti (401). Olası nedenler: Key ID ile .p8 dosyası farklı anahtarlara ait; Issuer ID yanlış; anahtar iptal edilmiş; ya da "Individual Keys" sekmesinden oluşturulmuş (Team Keys olmalı).');
 } else if (apps.durum === 403) {
   hata('Anahtar geçerli ama yetkisi yetmiyor (403). Anahtarın Access değeri "Admin" olmalı.');
