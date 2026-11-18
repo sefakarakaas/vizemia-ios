@@ -944,6 +944,86 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(_k)["odemeler"]?.diziDegeri?.first?.haritaDegeri?["tarih"]?.metinDegeri, "2026-11-12")
     }
 
+    func testStatuVeEvrakAyari() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("sta\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("sta\(ek)"), "displayName": .metin("Sefa Yönetici"), "role": .metin("admin"), "active": .mantik(true)])
+        let o = try await e.kimlik.giris(kullaniciAdi: "sta\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: nil)
+        func statuler() async throws -> [Statu] {
+            try await ben.sorgu(koleksiyon: "statuses", sinir: 100).map { Statu(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+                .filter { $0.id.hasSuffix(ek) || $0.ad.hasSuffix(ek) }.sorted { $0.sira < $1.sira }
+        }
+
+        // Yeni statü: arama aralığı tek uçluysa tamamlanır, son adımda silme süresi olmaz.
+        var g = StatuGirdisi(nil)
+        g.ad = "Evrak Bekleniyor \(ek)"; g.aramaMin = 14; g.silmeGun = 60; g.gerekenler = ["odeme", "uydurma"]
+        let k1 = try XCTUnwrap(StatuAyari.kaydet(g, mevcut: nil, statuler: [], calisan: c))
+        XCTAssertEqual(k1.id, "evrak-bekleniyor-\(ek)")
+        try await ben.isle(k1.yazimlar)
+        var g2 = StatuGirdisi(nil)
+        g2.ad = "Teslim \(ek)"; g2.son = true; g2.silmeGun = 30
+        let l1 = try await statuler()
+        let k2 = try XCTUnwrap(StatuAyari.kaydet(g2, mevcut: nil, statuler: l1, calisan: c))
+        try await ben.isle(k2.yazimlar)
+        var l = try await statuler()
+        XCTAssertEqual(l.map(\.id), [k1.id, k2.id])
+        XCTAssertEqual(l[0].aramaMax, 14)
+        XCTAssertEqual(l[0].gerekenler, ["odeme"])
+        XCTAssertNil(l[1].silmeGun)
+        XCTAssertTrue(l[1].bildirir)
+
+        // Düzenle ve sıra değiştir.
+        var g3 = StatuGirdisi(l[0]); g3.musteriAdi = "Evraklarınız bekleniyor"; g3.bildir = false
+        XCTAssertTrue(StatuAyari.musteriyeGorunenDegisti(l[0], g3))
+        try await ben.isle(try XCTUnwrap(StatuAyari.kaydet(g3, mevcut: l[0], statuler: l, calisan: c)).yazimlar)
+        try await ben.isle(StatuAyari.yerDegistir(l[0], l[1], calisan: c))
+        l = try await statuler()
+        XCTAssertEqual(l.map(\.id), [k2.id, k1.id])
+        XCTAssertFalse(l[1].bildirir)
+
+        // Kullanımdaki statüyü sil: başvuru taşınır, müşteri sayfası notlarıyla tazelenir.
+        let appId = "st\(ek)"
+        let takipId = String(repeating: "a", count: 60) + ek
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-11\(ek)"), "year": .tam(2026), "month": .tam(11),
+            "firstName": .metin("AYSE"), "lastName": .metin("KAYA"), "passportLast3": .metin("567"),
+            "country": .metin("italya"), "countryName": .metin("İtalya"),
+            "statusId": .metin(k1.id), "statusName": .metin(g.ad), "checklist": .harita([:]),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+        ])
+        let notlar: FSDeger = .dizi([.harita(["text": .metin("Evraklarınız geldi"), "at": .metin("2026-11-10")])])
+        try await owner.belgeYaz("takip/\(takipId)", alanlar: ["countryName": .metin("İtalya"), "firstName": .metin("AYSE"), "statusName": .metin("x"),
+                                                         "statusDescription": .metin(""), "statusColor": .metin("#000"), "isFinal": .mantik(false),
+                                                         "notes": notlar, "updatedAt": .zaman(Date())])
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+        let silinen = try XCTUnwrap(l.first { $0.id == k1.id }), hedef = try XCTUnwrap(l.first { $0.id == k2.id })
+        try await ben.isle(StatuAyari.tasi(b, takipId: takipId, notlar: notlar, hedef: hedef, statuler: l, saklamaGun: 60, calisan: c)
+                           + StatuAyari.sil(silinen, ayrinti: "\(silinen.ad) → \(hedef.ad) (1 başvuru)", calisan: c))
+        let _b2 = try await ben.belge("applications/\(appId)")
+        let b2 = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b2))
+        XCTAssertEqual(b2.statuId, k2.id)
+        XCTAssertNotNil(b2.sonAdimZamani)
+        let _t = try await owner.belge("takip/\(takipId)")
+        XCTAssertEqual(_t?["statusName"]?.metinDegeri, "Teslim \(ek)")
+        XCTAssertEqual(_t?["notes"], notlar)
+        let kalan = try await statuler()
+        XCTAssertEqual(kalan.map(\.id), [k2.id])
+
+        // Evrak listesi: genel + ülkeye özel; boş ülke listesi kaldırılır.
+        try await ben.isle(EvrakListesiAyari.kaydet(
+            genel: [Evrak(id: "pasaport", ad: "Pasaport"), Evrak(id: "", ad: "Banka Dökümü"), Evrak(id: "x", ad: "  ")],
+            ulkeler: ["italya": [Evrak(id: "otel", ad: "Otel rezervasyonu")], "fransa": []], kapsam: "italya", calisan: c))
+        let ayar = EvrakAyari(belge: try await ben.belge("settings/checklist"))
+        XCTAssertEqual(ayar.genel?.map(\.id), ["pasaport", "banka-dokumu"])
+        XCTAssertEqual(ayar.ulkeler.keys.sorted(), ["italya"])
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

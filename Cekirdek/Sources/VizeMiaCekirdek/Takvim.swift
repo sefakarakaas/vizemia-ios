@@ -16,6 +16,9 @@ public struct Statu: Equatable, Identifiable, Codable {
     public var silmeGun: Int?
     /// Bu statüye geçmeden önce tamamlanması gerekenler (GecisSarti sırasıyla).
     public var gerekenler: [String]
+    /// "Müşteriye bildir" (notifyCustomer); kayıtta yoksa açık sayılır.
+    public var musteriyeBildir: Bool?
+    public var bildirir: Bool { musteriyeBildir != false }
 
     public init(kimlik: String, alanlar a: [String: FSDeger]) {
         id = kimlik
@@ -36,6 +39,7 @@ public struct Statu: Equatable, Identifiable, Codable {
         let liste = a["gerekenler"]?.diziDegeri?.compactMap { $0.metinDegeri }
             ?? ((a["odemeGerekli"]?.mantikDegeri ?? false) ? ["odeme"] : [])
         gerekenler = GecisSarti.allCases.map(\.rawValue).filter { liste.contains($0) }
+        musteriyeBildir = a["notifyCustomer"]?.mantikDegeri
     }
 
     /// 1–en çok gün arası tam sayı; değilse yok (panel: gunSayisi).

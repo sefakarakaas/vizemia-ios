@@ -1,8 +1,7 @@
 import SwiftUI
 import VizeMiaCekirdek
 
-/// Ayarlar (yönetici; panel: #/ayarlar). Telefondan sık değişenler burada;
-/// statüler, evrak listesi, ülke formları ve şablonlar panelden.
+/// Ayarlar (yönetici; panel: #/ayarlar). Ülke formları ve şablonlar şimdilik panelden.
 struct AyarlarEkrani: View {
     @Environment(EkipOturumu.self) private var ekip
     @State private var belgeler: [String: [String: FSDeger]] = [:]
@@ -31,8 +30,14 @@ struct AyarlarEkrani: View {
                     } label: {
                         ayarSatiri("Bildirimler ve SMS", "Otomatik müşteri bildirimleri, gönderim saatleri", "bell.badge.fill")
                     }
+                    NavigationLink { StatuAyarEkrani() } label: {
+                        ayarSatiri("Statüler", "Sıra, müşteriye görünen ad, silme süresi, tekrar arama, geçiş şartları", "list.number")
+                    }
+                    NavigationLink { EvrakListesiAyarEkrani() } label: {
+                        ayarSatiri("Evrak kontrol listesi", "Genel liste ve ülkeye özel listeler", "checklist")
+                    }
                 } footer: {
-                    Text("Statüler, evrak listesi, ülke formları, mail / SMS / WhatsApp şablonları, randevu konumları ve site yayını anahtarı panelden (vizemia.com/panel) değiştirilir.")
+                    Text("Ülke formları, mail / SMS / WhatsApp şablonları, randevu konumları ve site yayını anahtarı panelden (vizemia.com/panel) değiştirilir.")
                 }
             } else {
                 ProgressView().frame(maxWidth: .infinity)
@@ -76,7 +81,7 @@ struct AyarlarEkrani: View {
 
 /// Ortak: yazar, sonucu gösterir.
 @MainActor
-private func ayarKaydet(_ ekip: EkipOturumu, _ y: [FirestoreIstemci.Yazim], yayin: Bool = false) async -> (tamam: Bool, mesaj: String) {
+func ayarKaydet(_ ekip: EkipOturumu, _ y: [FirestoreIstemci.Yazim], yayin: Bool = false) async -> (tamam: Bool, mesaj: String) {
     #if DEBUG
     if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return (true, "Kaydedildi.") }
     #endif

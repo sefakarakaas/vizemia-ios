@@ -249,6 +249,8 @@ public struct Evrak: Equatable, Identifiable {
     public var ad: String
     /// Herkesten değil, müşterinin durumuna göre isteniyor (emekli, 18 yaş altı…): sayaca girmez.
     public var kosullu: Bool
+
+    public init(id: String, ad: String, kosullu: Bool = false) { self.id = id; self.ad = ad; self.kosullu = kosullu }
 }
 
 /// Ayarlardaki listeler (settings/checklist: items, byCountry).
