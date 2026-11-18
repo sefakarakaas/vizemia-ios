@@ -28,7 +28,7 @@ final class ArsivVerisi {
         } catch FirestoreHatasi.izinYok {
             hata = "Müşteri arşivini görme yetkiniz yok."
         } catch {
-            hata = "Arşiv yüklenemedi. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Arşiv yüklenemedi. İnternet bağlantınızı kontrol edin.")
         }
     }
 

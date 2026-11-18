@@ -95,6 +95,8 @@ struct GirisEkrani: View {
             kapat()
         } catch let h as KimlikIstemci.Hata {
             hata = h.mesaj
+        } catch let h as FirestoreHatasi {
+            hata = h.mesaj
         } catch {
             hata = "Giriş yapılamadı. Lütfen yeniden deneyin."
         }

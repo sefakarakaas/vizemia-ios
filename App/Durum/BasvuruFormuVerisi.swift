@@ -111,7 +111,7 @@ final class BasvuruFormuVerisi {
         } catch FirestoreHatasi.izinYok {
             hata = "Düzenleme için hassas veri görme yetkisi gerekir."
         } catch {
-            hata = "Başvuru yüklenemedi. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Başvuru yüklenemedi. İnternet bağlantınızı kontrol edin.")
         }
     }
 
@@ -193,7 +193,7 @@ final class BasvuruFormuVerisi {
         } catch FirestoreHatasi.izinYok {
             return (nil, "Bu işlem için yetkiniz yok.")
         } catch {
-            return (nil, "Kaydedilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin.")
+            return (nil, HataAciklamasi.metin(error, "Kaydedilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."))
         }
     }
 

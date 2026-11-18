@@ -101,6 +101,29 @@ public enum FirestoreHatasi: Error, Equatable {
     case sunucu(Int)
     /// Bağlantı kurulamadı.
     case baglanti
+    /// Günlük okuma / yazma kotası doldu (429). Ücretsiz planda günde 50.000
+    /// okuma; panel, site ve zamanlanmış işler aynı kotayı kullanıyor.
+    case kotaDoldu
+
+    /// HTTP durum kodundan hata.
+    static func kod(_ k: Int) -> FirestoreHatasi {
+        switch k {
+        case 403: return .izinYok
+        case 429: return .kotaDoldu
+        default: return .sunucu(k)
+        }
+    }
+
+    /// Kullanıcıya gösterilecek açıklama.
+    public var mesaj: String {
+        switch self {
+        case .izinYok: return "Bu işlem için yetkiniz yok."
+        case .kotaDoldu:
+            return "Veritabanının günlük kullanım sınırı doldu (ücretsiz plan). Panel ve uygulama 11.00'de (Türkiye saati) yeniden çalışır; giriş bilgileriniz doğru."
+        case .baglanti: return "Bağlantı kurulamadı. İnternetinizi kontrol edin."
+        case .sunucu(let k): return "Sunucu hatası (\(k)). Biraz sonra yeniden deneyin."
+        }
+    }
 }
 
 /// Firestore'un REST arayüzü. Firebase SDK'sı yerine bu kullanılıyor: uygulama
@@ -174,7 +197,7 @@ public struct FirestoreIstemci {
         if let sonra { yapi["startAt"] = ["values": [sonra.json], "before": false] }
         istek.httpBody = try JSONSerialization.data(withJSONObject: ["structuredQuery": yapi])
         let (veri, kod) = try await gonder(istek)
-        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
         return FirestoreIstemci.sorguCevabi(veri)
     }
 
@@ -209,7 +232,7 @@ public struct FirestoreIstemci {
         istek.httpBody = try JSONSerialization.data(withJSONObject: FirestoreIstemci.guncellemeGovdesi(
             ad: "\(kok)/\(yol)", alanlar: alanlar, zamanAlanlari: zamanAlanlari))
         let (_, kod) = try await gonder(istek)
-        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
     }
 
     /// Belgeyi verilen alanlarla yazar (varsa üzerine). Yalnız testlerde, emülatöre
@@ -222,7 +245,7 @@ public struct FirestoreIstemci {
             "writes": [["update": ["name": "\(kok)/\(yol)", "fields": alanlar.mapValues { $0.json }]]],
         ])
         let (_, kod) = try await gonder(istek)
-        guard kod == 200 else { throw FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
     }
 
     static func guncellemeGovdesi(ad: String, alanlar: [String: FSDeger], zamanAlanlari: [String]) -> [String: Any] {
@@ -245,7 +268,7 @@ public struct FirestoreIstemci {
         istek.timeoutInterval = 20
         let (veri, kod) = try await gonder(istek)
         if kod == 404 { return nil }
-        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
         let o = (try? JSONSerialization.jsonObject(with: veri)) as? [String: Any]
         return FSDeger.alanlar(o?["fields"])
     }
@@ -262,7 +285,7 @@ public struct FirestoreIstemci {
         istek.httpBody = try JSONSerialization.data(withJSONObject: FirestoreIstemci.eklemeGovdesi(
             ad: "\(kok)/\(koleksiyon)/\(kimlik)", alanlar: alanlar, zamanAlani: zamanAlani))
         let (_, kod) = try await gonder(istek)
-        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
         return kimlik
     }
 
@@ -309,7 +332,7 @@ public struct FirestoreIstemci {
         istek.setValue("application/json", forHTTPHeaderField: "Content-Type")
         istek.httpBody = try JSONSerialization.data(withJSONObject: ["writes": yazimlar.map { yazimGovdesi($0) }])
         let (_, kod) = try await gonder(istek)
-        guard kod == 200 else { throw kod == 403 ? FirestoreHatasi.izinYok : FirestoreHatasi.sunucu(kod) }
+        guard kod == 200 else { throw FirestoreHatasi.kod(kod) }
     }
 
     func yazimGovdesi(_ y: Yazim) -> [String: Any] {

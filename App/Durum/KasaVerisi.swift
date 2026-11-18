@@ -194,11 +194,7 @@ final class KasaVerisi {
         return url
     }
 
-    static func mesaj(_ e: Error, _ varsayilan: String) -> String {
-        if case FirestoreHatasi.izinYok = e { return "Bu işlem için yetkiniz yok." }
-        if case KimlikIstemci.Hata.oturumBitti = e { return KimlikIstemci.Hata.oturumBitti.mesaj }
-        return varsayilan
-    }
+    static func mesaj(_ e: Error, _ varsayilan: String) -> String { HataAciklamasi.metin(e, varsayilan) }
 
     #if DEBUG
     private func ornek() {

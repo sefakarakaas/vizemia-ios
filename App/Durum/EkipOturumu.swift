@@ -86,7 +86,13 @@ final class EkipOturumu {
             kilitli = false
             ekipGorunumu = true
             await yukle()
-            if durum == .yok { throw KimlikIstemci.Hata.oturumBitti }
+            if durum == .yok {
+                // Şifre doğruydu ama çalışan kaydı okunamadı (kota, bağlantı…): asıl sebep
+                // gösterilir; "oturum sona erdi" demek yanıltıcı olur.
+                let h = sonYuklemeHatasi ?? KimlikIstemci.Hata.oturumBitti
+                cikis()
+                throw h
+            }
         } catch {
             if durum == .aciliyor { durum = .yok }
             throw error
@@ -139,8 +145,12 @@ final class EkipOturumu {
     }
 
     /// Çalışan kaydını, izinleri, statüleri ve boşta kalma süresini okur.
+    /// Son yükleme hatası (girişte kullanıcıya asıl sebebi göstermek için).
+    private var sonYuklemeHatasi: Error?
+
     func yukle() async {
         guard let o = oturum else { return }
+        sonYuklemeHatasi = nil
         do {
             let f = try await istemci()
             async let emp = f.belge("employees/\(o.uid)")
@@ -182,6 +192,7 @@ final class EkipOturumu {
         } catch KimlikIstemci.Hata.oturumBitti {
             cikis()
         } catch {
+            sonYuklemeHatasi = error
             // Bağlantı yok: saklanan çalışan kaydıyla devam edilir.
             if calisan != nil { durum = .acik } else if durum == .aciliyor { durum = .yok }
         }

@@ -68,7 +68,7 @@ final class BasvuruListesiVerisi {
         } catch KimlikIstemci.Hata.oturumBitti {
             hata = KimlikIstemci.Hata.oturumBitti.mesaj
         } catch {
-            hata = "Başvurular yüklenemedi. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Başvurular yüklenemedi. İnternet bağlantınızı kontrol edin.")
         }
     }
 
@@ -108,7 +108,7 @@ final class BasvuruListesiVerisi {
             bulunanlar = bulunan
             hata = bulunan.isEmpty ? "Kayıt bulunamadı." : nil
         } catch {
-            hata = "Arama yapılamadı. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Arama yapılamadı. İnternet bağlantınızı kontrol edin.")
         }
         return nil
     }
@@ -201,7 +201,7 @@ final class BasvuruDetayVerisi {
         } catch KimlikIstemci.Hata.oturumBitti {
             hata = KimlikIstemci.Hata.oturumBitti.mesaj
         } catch {
-            hata = "Başvuru yüklenemedi. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Başvuru yüklenemedi. İnternet bağlantınızı kontrol edin.")
         }
     }
 
@@ -278,7 +278,7 @@ final class BasvuruDetayVerisi {
         } catch KimlikIstemci.Hata.oturumBitti {
             return KimlikIstemci.Hata.oturumBitti.mesaj
         } catch {
-            return "Kaydedilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."
+            return HataAciklamasi.metin(error, "Kaydedilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin.")
         }
     }
 

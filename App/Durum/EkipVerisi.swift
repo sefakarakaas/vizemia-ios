@@ -72,7 +72,7 @@ final class EkipVerisi {
         } catch FirestoreHatasi.sunucu(429) {
             hata = "Veritabanının günlük okuma sınırı doldu; sınır her gün 11.00'de yenilenir."
         } catch {
-            hata = "Bilgiler yüklenemedi. İnternet bağlantınızı kontrol edin."
+            hata = HataAciklamasi.metin(error, "Bilgiler yüklenemedi. İnternet bağlantınızı kontrol edin.")
         }
     }
 
