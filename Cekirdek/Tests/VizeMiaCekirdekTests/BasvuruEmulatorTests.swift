@@ -663,6 +663,126 @@ final class BasvuruEmulatorTests: XCTestCase {
         } catch let h as FirestoreHatasi { XCTAssertEqual(h, .izinYok) }
     }
 
+    func testMusteriFormu() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("frm\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("frm\(ek)"), "displayName": .metin("Aleyna Yıldız"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["app.edit", "app.status", "app.sensitive"]).map { .metin($0) }),
+        ])])
+        let appId = "frm\(ek)"
+        let takipId = String(repeating: "d", count: 60) + ek
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-11\(ek)"), "year": .tam(2026), "month": .tam(11),
+            "firstName": .metin("AYSE"), "lastName": .metin("KAYA"), "passportLast3": .metin("567"),
+            "country": .metin("italya"), "countryName": .metin("İtalya"),
+            "statusId": .metin("potansiyel"), "statusName": .metin("Potansiyel"), "checklist": .harita([:]),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+        ])
+        try await owner.belgeYaz("applications/\(appId)/private/data", alanlar: ["form": .harita([
+            "firstName": .metin("AYSE"), "passportNo": .metin("U1234567"), "phone": .metin("0532 123 45 67"),
+            "email": .metin("ayse@ornek.com"), "maritalStatus": .metin("bekar"),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "frm\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+        let _f = try await ben.belge("applications/\(appId)/private/data")
+        let form = try XCTUnwrap(_f?["form"]?.haritaDegeri)
+
+        let alanlar = [
+            FormAlani(key: "firstName", label: "İsim", group: "kisisel", required: true),
+            FormAlani(key: "nationalId", label: "T.C. kimlik no", group: "kisisel"),
+            FormAlani(key: "birthPlace", label: "Doğum yeri", group: "kisisel", type: "province"),
+            FormAlani(key: "maritalStatus", label: "Medeni hâl", group: "kisisel",
+                      options: [FormSecenegi(value: "", label: "Seçiniz"), FormSecenegi(value: "bekar", label: "Bekâr")]),
+            FormAlani(key: "district", label: "İlçe", group: "adres", type: "district"),
+        ]
+        let sorular = MusteriFormu.sorular(alanlar, iller: ["Adana", "Ankara"])
+        XCTAssertEqual(sorular.compactMap { $0.haritaDegeri?["key"]?.metinDegeri }, ["firstName", "birthPlace", "maritalStatus", "district"])
+        XCTAssertEqual(sorular[2].haritaDegeri?["options"]?.diziDegeri?.count, 1)
+        XCTAssertEqual(sorular[3].haritaDegeri?["help"]?.metinDegeri, "İlçe adını yazın.")
+
+        // İlk hazırlık: SMS 'form' türüyle sıraya girer, geçmiş + işlem kaydı.
+        let h = MusteriFormu.hazirla(b, form: form, takipId: takipId, onceki: nil, sorular: sorular, sms: true,
+                                     smsAyari: SmsAyari(belge: ["enabled": .mantik(true)]), calisan: c)
+        XCTAssertFalse(h.smsAlinamadi)
+        try await ben.isle(h.yazimlar)
+        let _k = try await ben.belge("formlar/\(takipId)")
+        var kayit = MusteriFormuKaydi(alanlar: try XCTUnwrap(_k))
+        XCTAssertEqual(kayit.durum, "gonderildi")
+        XCTAssertEqual(kayit.onDolgu, ["firstName": "AYSE", "maritalStatus": "bekar"])
+        XCTAssertEqual(kayit.doluluk().dolu, 2)
+        XCTAssertEqual(kayit.doluluk().toplam, 4)
+        let sms = try await ben.sorgu(koleksiyon: "sms", kosullar: [.esit("appId", .metin(appId))], sinir: 5)
+        XCTAssertEqual(sms.first?.alanlar["tur"]?.metinDegeri, "form")
+        XCTAssertTrue(sms.first?.alanlar["text"]?.metinDegeri?.contains("form?kod=2026-11\(ek)") == true)
+
+        // Müşteri doldurdu ve soru sordu (sahibin eliyle; müşteri yazımı sitenin işi).
+        try await owner.belgeYaz("formlar/\(takipId)", alanlar: (try XCTUnwrap(_k)).merging([
+            "answers": .harita(["birthPlace": .metin("Ankara"), "district": .metin("Çankaya"), "uydurma": .metin("x"),
+                                "kvkk_riza": .metin("2026-11-18T08:00:00.000Z")]),
+            "questionsAsked": .dizi([.harita(["field": .metin("district"), "text": .metin("Mahalle de mi?"), "at": .metin("2026-11-18T08:01:00.000Z")])]),
+            "status": .metin("tamamlandi"),
+        ]) { $1 })
+        let _k2 = try await ben.belge("formlar/\(takipId)")
+        kayit = MusteriFormuKaydi(alanlar: try XCTUnwrap(_k2))
+        XCTAssertEqual(kayit.doluluk().dolu, 4)
+        XCTAssertNotNil(kayit.rizaZamani)
+        XCTAssertEqual(kayit.acikSorular, 1)
+
+        // Cevap; sonra yenileme cevaplara ve soruya dokunmaz, durumu geri almaz.
+        try await ben.isle(try XCTUnwrap(MusteriFormu.cevapla(takipId: takipId, kayit: kayit, sira: 0, metin: "Yalnız ilçe yeter.", calisan: c)))
+        let h2 = MusteriFormu.hazirla(b, form: form, takipId: takipId, onceki: kayit, sorular: sorular, sms: false,
+                                      smsAyari: SmsAyari(belge: nil), calisan: c)
+        try await ben.isle(h2.yazimlar)
+        let _k3 = try await ben.belge("formlar/\(takipId)")
+        kayit = MusteriFormuKaydi(alanlar: try XCTUnwrap(_k3))
+        XCTAssertEqual(kayit.durum, "tamamlandi")
+        XCTAssertEqual(kayit.musteriSorulari.first?.cevap, "Yalnız ilçe yeter.")
+        XCTAssertEqual(kayit.cevaplar["birthPlace"], "Ankara")
+
+        // Aktarma: yalnız bilinen ve farklı alanlar.
+        let l = kayit.aktarilacaklar(alanlar: alanlar, form: form)
+        XCTAssertEqual(l.map(\.key), ["birthPlace", "district"])
+        try await ben.isle(MusteriFormu.aktar(b, l, calisan: c))
+        let _f2 = try await ben.belge("applications/\(appId)/private/data")
+        let form2 = try XCTUnwrap(_f2?["form"]?.haritaDegeri)
+        XCTAssertEqual(form2["district"]?.metinDegeri, "Çankaya")
+        XCTAssertEqual(form2["passportNo"]?.metinDegeri, "U1234567")
+        XCTAssertTrue(kayit.aktarilacaklar(alanlar: alanlar, form: form2).isEmpty)
+
+        // Kapat, sonra yenileyince yeniden "gönderildi".
+        try await ben.isle(MusteriFormu.kapat(takipId: takipId, calisan: c))
+        let _k4 = try await ben.belge("formlar/\(takipId)")
+        kayit = MusteriFormuKaydi(alanlar: try XCTUnwrap(_k4))
+        XCTAssertEqual(kayit.durum, "kapandi")
+        try await ben.isle(MusteriFormu.hazirla(b, form: form2, takipId: takipId, onceki: kayit, sorular: sorular, sms: false,
+                                                smsAyari: SmsAyari(belge: nil), calisan: c).yazimlar)
+        let _k5 = try await ben.belge("formlar/\(takipId)")
+        XCTAssertEqual(MusteriFormuKaydi(alanlar: try XCTUnwrap(_k5)).durum, "gonderildi")
+
+        // Gönderim kuralı: "süreç başladıktan 7 gün sonra" → bildirim planlanır.
+        let kural = FormGonderimKurali(mod: "baslangic-sonra", gun: 7)
+        let simdi = Date()
+        var b2 = b
+        b2.acilis = simdi
+        let r = MusteriFormu.kuralKaydet(b2, kural: kural, iletisim: MusteriIletisimi(form: form2), ayar: BildirimAyari(belge: nil),
+                                         mevcut: [], calisan: c, simdi: simdi)
+        XCTAssertTrue(r.durum.hasPrefix("Süreç başladıktan 7 gün sonra — "))
+        try await ben.isle(r.yazimlar)
+        let bl = try await ben.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 5)
+        XCTAssertEqual(bl.first?.alanlar["kind"]?.metinDegeri, "form-linki")
+        let _b3 = try await ben.belge("applications/\(appId)")
+        XCTAssertEqual(Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b3)).formGonderim, kural)
+        XCTAssertEqual(MusteriFormu.kuralKaydet(b2, kural: .varsayilan, iletisim: MusteriIletisimi(form: form2), ayar: BildirimAyari(belge: nil),
+                                                mevcut: [], calisan: c).durum, "Elle — danışman gönderir — elle gönderilecek.")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

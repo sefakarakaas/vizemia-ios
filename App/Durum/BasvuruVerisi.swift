@@ -154,6 +154,9 @@ final class BasvuruDetayVerisi {
     private(set) var epostalar: [EpostaKaydi] = []
     /// SMS ve WhatsApp geçmişi (sms/ ve mesajKaydi/).
     private(set) var mesajlar: [MesajSatiri] = []
+    /// Müşteri formu (formlar/{takipId}); kart açılınca bir kez okunur.
+    private(set) var musteriFormu: MusteriFormuKaydi?
+    private(set) var musteriFormuOkundu = false
 
     init(kimlik: String) { self.kimlik = kimlik }
 
@@ -372,6 +375,88 @@ final class BasvuruDetayVerisi {
     func epostaIptal(_ m: EpostaKaydi, ekip: EkipOturumu) async -> String? {
         guard let c = ekip.calisan else { return "Oturum bulunamadı." }
         return await isle(EpostaIslemi.iptal(m, calisan: c), ekip, yenile: [.epostalar])
+    }
+
+    // MARK: - Müşteri formu
+
+    func musteriFormuYukle(_ ekip: EkipOturumu) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { musteriFormuOkundu = true; return }
+        #endif
+        guard let t = takipId, let f = try? await ekip.istemci() else { return }
+        let a: [String: FSDeger]? = (try? await f.belge("formlar/\(t)")) ?? nil
+        musteriFormu = a.map { MusteriFormuKaydi(alanlar: $0) }
+        musteriFormuOkundu = true
+    }
+
+    /// Formu kurar / yeniler; istenirse SMS'le gönderir.
+    func musteriFormuHazirla(sms: Bool, sema: FormSemasi, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        guard let t = takipId, let fm = form else { return (false, "Takip anahtarı yok; önce pasaport numarasını kaydedin.") }
+        let alanlar = sema.panelAlanlari(b.ulke, kayitli: ekip.ulkeFormlari)
+        let sorular = MusteriFormu.sorular(alanlar, iller: sema.iller.map(\.ad))
+        // Yenilemeden hemen önce son hâli okunur: müşteri bu arada doldurmaya başlamış olabilir.
+        if let f = try? await ekip.istemci() {
+            let a: [String: FSDeger]? = (try? await f.belge("formlar/\(t)")) ?? nil
+            musteriFormu = a.map { MusteriFormuKaydi(alanlar: $0) }
+        }
+        let h = MusteriFormu.hazirla(b, form: fm, takipId: t, onceki: musteriFormu, sorular: sorular, sms: sms,
+                                     smsAyari: ekip.smsAyari, calisan: c)
+        if let hata = await isle(h.yazimlar, ekip, yenile: [.gecmis, .mesajlar]) { return (false, hata) }
+        await musteriFormuYukle(ekip)
+        if h.smsAlinamadi { return (true, "Form hazırlandı; SMS sıraya alınamadı (telefon ya da SMS ayarı eksik).") }
+        return (true, sms ? "Form hazırlandı, SMS sıraya alındı." : "Form hazırlandı. Bağlantıyı kendiniz iletebilirsiniz.")
+    }
+
+    func musteriFormuKapat(ekip: EkipOturumu) async -> String? {
+        guard let c = ekip.calisan, let t = takipId else { return "Oturum bulunamadı." }
+        let h = await isle(MusteriFormu.kapat(takipId: t, calisan: c), ekip, yenile: [])
+        if h == nil { await musteriFormuYukle(ekip) }
+        return h
+    }
+
+    func musteriSorusunuCevapla(_ sira: Int, metin: String, ekip: EkipOturumu) async -> String? {
+        guard let c = ekip.calisan, let t = takipId else { return "Oturum bulunamadı." }
+        // Müşterinin yeni sorusu ezilmesin: liste yazmadan hemen önce okunur.
+        await musteriFormuYukle(ekip)
+        guard let k = musteriFormu, let y = MusteriFormu.cevapla(takipId: t, kayit: k, sira: sira, metin: metin, calisan: c) else {
+            return "Cevap boş olamaz."
+        }
+        let h = await isle(y, ekip, yenile: [])
+        if h == nil { await musteriFormuYukle(ekip) }
+        return h
+    }
+
+    func musteriCevaplariniAktar(_ l: [(key: String, etiket: String, deger: String)], ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return nil }
+        #endif
+        let h = await isle(MusteriFormu.aktar(b, l, calisan: c), ekip, yenile: [.gecmis])
+        if h == nil, let f = try? await ekip.istemci() {
+            let v: [String: FSDeger]? = (try? await f.belge("\(yol)/private/data")) ?? nil
+            form = v.map { $0["form"]?.haritaDegeri ?? [:] }
+        }
+        return h
+    }
+
+    /// Bu başvurunun form gönderim kuralı + yeniden planlama. Sonuç metni ya da hata.
+    func formKuraliKaydet(_ kural: FormGonderimKurali, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return (true, kural.ozet) }
+        #endif
+        do {
+            let f = try await ekip.istemci()
+            let mevcut = try await f.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(b.kimlik))], sinir: 50)
+                .map { BildirimKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            let r = MusteriFormu.kuralKaydet(b, kural: kural, iletisim: iletisim ?? MusteriIletisimi(form: nil), ayar: ekip.bildirimAyari,
+                                             mevcut: mevcut, calisan: c)
+            if let h = await isle(r.yazimlar, ekip, yenile: [.basvuru]) { return (false, h) }
+            return (true, r.durum)
+        } catch {
+            return (false, HataAciklamasi.metin(error, "Kaydedilemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."))
+        }
     }
 
     /// Formdaki metin değerleri (pasaport karşılaştırması için).

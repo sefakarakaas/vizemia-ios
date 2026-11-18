@@ -330,6 +330,18 @@ public enum BildirimPlani {
     static let bekletilen: Set<String> = ["randevu-alindi"]
     static let beklemeSn: TimeInterval = 30 * 60
 
+    struct Kanal { var telefon: String; var eposta: String; var wa: Bool; var sms: Bool; var email: Bool }
+
+    /// Müşterinin seçtiği ve ayarda açık kanallar (panel: kanallar). Kurallar yalnız
+    /// Türkiye cep telefonunu kabul ediyor (isPhone): öteki numarada WhatsApp/SMS planlanmaz.
+    static func kanallar(_ i: MusteriIletisimi, _ ayar: BildirimAyari) -> Kanal {
+        let tel = MusteriBildirimi.e164(i.telefon)
+        let telefon = tel.eslesir("^\\+90[0-9]{10}$") ? tel : ""
+        let eposta = MusteriBildirimi.epostaGecerli(i.eposta) ? i.eposta.kirpik.lowercased() : ""
+        return Kanal(telefon: telefon, eposta: eposta, wa: i.whatsapp && ayar.kanallar.wa && !telefon.isEmpty,
+                     sms: i.sms && ayar.kanallar.sms && !telefon.isEmpty, email: i.epostaIzni && ayar.kanallar.email && !eposta.isEmpty)
+    }
+
     public struct Sonuc {
         public var yazimlar: [FirestoreIstemci.Yazim]
         public var yazilan: [String]
@@ -349,12 +361,8 @@ public enum BildirimPlani {
         var s = Sonuc(yazimlar: [], yazilan: [], iptal: 0, atlanan: [])
         guard ayar.acik else { s.atlanan.append("bildirimler kapalı"); return s }
         // Kurallar yalnız Türkiye cep telefonunu kabul ediyor (isPhone): öteki numarada WhatsApp/SMS planlanmaz.
-        let tel = MusteriBildirimi.e164(iletisim.telefon)
-        let telefon = tel.eslesir("^\\+90[0-9]{10}$") ? tel : ""
-        let eposta = MusteriBildirimi.epostaGecerli(iletisim.eposta) ? iletisim.eposta.kirpik.lowercased() : ""
-        let wa = iletisim.whatsapp && ayar.kanallar.wa && !telefon.isEmpty
-        let sms = iletisim.sms && ayar.kanallar.sms && !telefon.isEmpty
-        let email = iletisim.epostaIzni && ayar.kanallar.email && !eposta.isEmpty
+        let kn = kanallar(iletisim, ayar)
+        let (telefon, eposta, wa, sms, email) = (kn.telefon, kn.eposta, kn.wa, kn.sms, kn.email)
         guard wa || sms || email else { s.atlanan.append("açık kanal yok"); return s }
 
         let gonderilmis = Set(mevcut.filter { $0.durum == "sent" && !yenidenGonder.contains($0.tur) }.map(\.tur))

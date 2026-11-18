@@ -102,6 +102,8 @@ public struct UlkeFormu: Decodable, Equatable {
     public var required: [String]?
     public var extra: [EkSoru]?
     public var formTuru: String
+    /// Ülkenin form gönderim kuralı (settings/forms → countries.<ülke>.formGonderim).
+    public var formGonderim: FormGonderimKurali?
 
     enum Anahtar: String, CodingKey { case hidden, required, extra, formTuru }
 
@@ -119,6 +121,7 @@ public struct UlkeFormu: Decodable, Equatable {
         required = a["required"]?.diziDegeri?.compactMap { $0.metinDegeri }
         extra = a["extra"]?.diziDegeri?.compactMap { $0.haritaDegeri.map { EkSoru(alanlar: $0) } }
         formTuru = a["formTuru"]?.metinDegeri ?? ""
+        formGonderim = a["formGonderim"]?.haritaDegeri.flatMap { FormGonderimKurali(alanlar: $0) }
     }
 
     public init() { hidden = nil; required = nil; extra = nil; formTuru = "" }

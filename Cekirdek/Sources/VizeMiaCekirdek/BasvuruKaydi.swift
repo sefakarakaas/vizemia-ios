@@ -42,6 +42,8 @@ public struct Basvuru: Equatable, Identifiable {
     public var grupAdi: String
     /// Telefonda hızlı açılan başvurunun eksik alanları ("Bilgileri kontrol edin").
     public var kontrolNotu: String
+    /// Bu başvuruya özel form gönderim kuralı (yoksa ülkeninki).
+    public var formGonderim: FormGonderimKurali?
 
     public var id: String { kimlik }
 
@@ -75,6 +77,7 @@ public struct Basvuru: Equatable, Identifiable {
         randevuHarita = m("randevuHarita")
         grupId = m("grupId"); grupAdi = m("grupAdi")
         kontrolNotu = m("reviewNote")
+        formGonderim = a["formGonderim"]?.haritaDegeri.flatMap { FormGonderimKurali(alanlar: $0) }
     }
 
     public var adSoyad: String {
