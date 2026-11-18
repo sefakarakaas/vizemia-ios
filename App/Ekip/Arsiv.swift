@@ -92,7 +92,9 @@ struct ArsivEkrani: View {
     @State private var veri = ArsivVerisi()
     @State private var arama = ""
     @State private var silinecek: ArsivKaydi?
+    @State private var talebeAlinacak: ArsivKaydi?
     @State private var bildiri: String?
+    @Environment(IcerikDeposu.self) private var depo
 
     var body: some View {
         Group {
@@ -130,6 +132,28 @@ struct ArsivEkrani: View {
             Button("Vazgeç", role: .cancel) {}
         } message: {
             Text("Ör. müşterinin silme talebi. Geri alınamaz.")
+        }
+        .confirmationDialog("Talepler'e geri alınsın mı?", isPresented: Binding(
+            get: { talebeAlinacak != nil }, set: { if !$0 { talebeAlinacak = nil } }), titleVisibility: .visible) {
+            Button("Talepler'e geri al") {
+                guard let k = talebeAlinacak else { return }
+                Task { bildiri = await talebeAl(k) }
+            }
+            Button("Vazgeç", role: .cancel) {}
+        } message: {
+            Text("\(talebeAlinacak?.adSoyad ?? "") Talepler'e bugün \"Aranacak\" olarak döner; başvuruya Talepler'den çevirebilirsiniz. Arşiv kaydı yerinde kalır.")
+        }
+    }
+
+    private func talebeAl(_ k: ArsivKaydi) async -> String {
+        guard let c = ekip.calisan else { return "Oturum bulunamadı." }
+        let r = k.talebeAl(bugun: Tr.bugun(), mesai: depo.mesai, calisan: c)
+        if !r.hatalar.isEmpty { return r.hatalar.joined(separator: " ") }
+        do {
+            try await ekip.istemci().isle(r.yazimlar)
+            return "\(k.adSoyad) Talepler'e geri alındı."
+        } catch {
+            return KasaVerisi.mesaj(error, "Geri alınamadı.")
         }
     }
 
@@ -185,6 +209,10 @@ struct ArsivEkrani: View {
                             Label("Yeniden başvuru aç", systemImage: "arrow.uturn.left")
                         }
                         .buttonStyle(KucukDugme())
+                    }
+                    if ekip.yapabilir("lead.manage") && !k.telefon.isEmpty {
+                        Button { talebeAlinacak = k } label: { Label("Talepler'e geri al", systemImage: "phone.arrow.up.right") }
+                            .buttonStyle(KucukDugme())
                     }
                     if ekip.calisan?.yonetici ?? false {
                         Button(role: .destructive) { silinecek = k } label: { Label("Arşivden sil", systemImage: "trash") }

@@ -978,6 +978,13 @@ final class BasvuruEmulatorTests: XCTestCase {
         let bk = ArmutIsi.aktar(b, talep: gorusme, bugun: bugun, mesai: mesai, calisan: c)
         XCTAssertEqual(bk.hatalar, [])
         try await ben.isle(bk.yazimlar)
+
+        // Müşteri arşivinden Talepler'e geri alma (kaynak: arsiv).
+        let arsiv = ArsivKaydi(kimlik: "arsiv\(ek)", alanlar: ["ad": .metin("Ece"), "soyad": .metin("Su"), "telefon": .metin("+905321234567"),
+                                                             "eposta": .metin("ece@ornek.com"), "takipKodu": .metin("2025-111111"), "sonStatu": .metin("Vize onaylandı")])
+        let ga = arsiv.talebeAl(bugun: bugun, mesai: mesai, calisan: c)
+        XCTAssertEqual(ga.hatalar, [])
+        try await ben.isle(ga.yazimlar)
     }
 
     /// Ayarlar (yönetici): mesai ve tatil, genel (hesaplar korunur), izinler, kasa listeleri, bildirim ve SMS; çalışan yazamaz.

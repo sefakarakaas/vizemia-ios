@@ -252,3 +252,34 @@ public struct ArmutIsi: Equatable, Identifiable {
         return ([], y)
     }
 }
+
+extension ArsivKaydi {
+    /// Arşivdeki (silinmiş) müşteri Talepler'e "Aranacak" olarak, bugün döner (panel: arsivdenTalep).
+    /// Müşteri ilk başvuruda KVKK onayını vermişti; geri alan kişi onaylar. Arşiv kaydı yerinde kalır.
+    public func talebeAl(bugun: String, mesai: Mesai, simdi: Date = Date(), calisan c: Calisan)
+        -> (hatalar: [String], yazimlar: [FirestoreIstemci.Yazim]) {
+        var t = ElleTalep()
+        t.ad = "\(ad) \(soyad)".kirpik
+        t.telefon = telefon
+        t.eposta = eposta
+        t.ulke = ulke
+        t.ulkeAdi = ulkeAdi
+        t.not = ["Müşteri arşivinden geri alındı.", takipKodu.isEmpty ? "" : "Eski takip kodu: \(takipKodu).",
+                 sonStatu.isEmpty ? "" : "Son durum: \(sonStatu)."].filter { !$0.isEmpty }.joined(separator: " ")
+        t.sonra = true
+        t.tarih = bugun
+        t.saat = mesai.simdikiSaat(simdi)
+        t.wa = !telefon.isEmpty
+        t.sms = false
+        t.email = !eposta.isEmpty
+        t.onay = true
+        t.kaynak = "arsiv"
+        let r = t.kayit(bugun: bugun, mesai: mesai, simdi: simdi)
+        guard let alanlar = r.alanlar else { return (r.hatalar, []) }
+        let talepId = FirestoreIstemci.yeniKimlik()
+        var y = ElleTalep.yazimlar(alanlar, kimlik: talepId, calisan: c)
+        y.removeLast()
+        y.append(IslemKaydiYazimi.yaz("arsiv.talebeAl", id, "\(ad) \(soyad)\(takipKodu.isEmpty ? "" : " · \(takipKodu)") → talep \(talepId)", c))
+        return ([], y)
+    }
+}
