@@ -194,6 +194,21 @@ final class EkipOturumu {
         return (try? await URLSession.shared.data(for: i)) != nil
     }
 
+    /// gizli/github anahtarı (bir kez okunur). Boş: otomatik yayın ayarlanmamış.
+    private var yayinAnahtari: String?
+
+    /// İçerik kaydedilince sitenin yayın işini hemen başlatır (panel: siteyiGuncelle).
+    /// - Returns: nil: anahtar yok (en geç 6 saatte yayına çıkar); true: başladı; false: başlatılamadı
+    func siteyiGuncelle() async -> Bool? {
+        if yayinAnahtari == nil {
+            let b: [String: FSDeger]? = (try? await istemci().belge("gizli/github")) ?? nil
+            yayinAnahtari = b?["token"]?.metinDegeri ?? ""
+        }
+        guard let t = yayinAnahtari, !t.isEmpty else { return nil }
+        guard let (_, cevap) = try? await URLSession.shared.data(for: SiteYayini.istek(anahtar: t)) else { return false }
+        return (cevap as? HTTPURLResponse)?.statusCode == 204
+    }
+
     // MARK: - Face ID kilidi
 
     func arkaPlanaGecti() { arkaPlanaGecis = Date() }

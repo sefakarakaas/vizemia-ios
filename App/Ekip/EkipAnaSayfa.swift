@@ -36,7 +36,7 @@ struct EkipBolumu: Identifiable {
             Oge(id: "firma", ad: "Firmalara mail", simge: "building.2.fill", izin: "firma.view|firma.send", yonetici: false, rota: .firma),
         ]),
         EkipBolumu(id: "sosyal", ad: "Sosyal medya", simge: "megaphone.fill", ogeler: [
-            Oge(id: "icerik", ad: "Blog ve SSS", simge: "doc.text.fill", izin: "content.draft|content.publish", yonetici: false, rota: nil),
+            Oge(id: "icerik", ad: "Blog ve SSS", simge: "doc.text.fill", izin: "content.draft|content.publish", yonetici: false, rota: .icerikler),
             Oge(id: "sosyal", ad: "Sosyal medya", simge: "camera.fill", izin: "social.view", yonetici: false, rota: nil),
             Oge(id: "vitrin", ad: "Vitrin (ana sayfa)", simge: "photo.on.rectangle.angled", izin: "vitrin.edit|vitrin.publish", yonetici: false, rota: nil),
             Oge(id: "havuz", ad: "Fotoğraf havuzu", simge: "photo.stack.fill", izin: "havuz.manage|vitrin.edit|vitrin.publish", yonetici: false, rota: nil),
@@ -45,7 +45,7 @@ struct EkipBolumu: Identifiable {
             Oge(id: "takvim", ad: "Takvim", simge: "calendar", izin: "app.view|lead.view", yonetici: false, rota: .takvim),
         ]),
         EkipBolumu(id: "ayarlar", ad: "Ayarlar", simge: "gearshape.fill", ogeler: [
-            Oge(id: "surec", ad: "Süreç adımları", simge: "list.number", izin: "surec.edit|vitrin.edit|vitrin.publish", yonetici: false, rota: nil),
+            Oge(id: "surec", ad: "Süreç adımları", simge: "list.number", izin: "surec.edit|vitrin.edit|vitrin.publish", yonetici: false, rota: .surec),
             Oge(id: "ayarlar", ad: "Ayarlar", simge: "gearshape.fill", izin: "", yonetici: true, rota: nil),
             Oge(id: "kullanicilar", ad: "Kullanıcılar", simge: "person.3.fill", izin: "", yonetici: true, rota: nil),
             Oge(id: "kayitlar", ad: "İşlem kayıtları", simge: "list.bullet.rectangle.fill", izin: "", yonetici: true, rota: nil),

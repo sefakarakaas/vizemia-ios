@@ -663,4 +663,87 @@ final class BasvuruEmulatorTests: XCTestCase {
         let yanlis = try XCTUnwrap(FirmaMaili.cevap(firmaId: firmaId, firma: "x", eposta: "baska@ornek.com", konu: "a", govde: "b", genel: g, calisan: c))
         do { try await ben.isle(yanlis); XCTFail("adres firmanınki olmalı") } catch {}
     }
+
+    /// Süreç adımları (siteMetin/surec): 3–6 adım; okur değiştiremez.
+    func testSurecAdimlari() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("surec\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("surec\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "surec\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        var s = SurecAdimlari.varsayilan
+        s.adimlar.removeLast()
+        s.baslik = "4 adımda başvuru"
+        XCTAssertEqual(s.hatalar, [])
+        try await ben.isle(s.yazimlar(calisan: c))
+        let _b = try await ben.belge("siteMetin/surec")
+        XCTAssertEqual(SurecAdimlari(belge: _b), s)
+        var az = s
+        az.adimlar = Array(az.adimlar.prefix(2))
+        XCTAssertFalse(az.hatalar.isEmpty)
+        do { try await ben.isle(az.yazimlar(calisan: c)); XCTFail("en az 3 adım") } catch {}
+    }
+
+    /// Blog / SSS: yayınla, slaytı olan içeriği güncelle (görsel korunur), sil.
+    func testIcerik() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("icerik\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("icerik\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "icerik\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+
+        var i = Icerik()
+        i.baslik = "Schengen Vizesi: Nasıl Başvurulur?"
+        i.metin = "## Adımlar\n- Randevu\n- Evrak"
+        i.durum = "published"
+        XCTAssertEqual(i.hatalar, [])
+        try await ben.isle(IcerikIslemi.kaydet(i, yeni: true, yayinlayabilir: true, slayt: nil, calisan: c))
+        let _a = try await ben.belge("content/\(i.id)")
+        var kayitli = Icerik(kimlik: i.id, alanlar: try XCTUnwrap(_a))
+        XCTAssertEqual(kayitli.slug, "schengen-vizesi-nasil-basvurulur")
+        XCTAssertNotNil(kayitli.yayinTarihi)
+
+        // Panelde slayt eklenmiş (havuz fotoğrafıyla); uygulamada başlık değişince slayt da güncellenir.
+        try await owner.belgeYaz("vitrin/icerik-\(i.id)", alanlar: [
+            "ust": .metin("Blog"), "baslik": .metin("Eski"), "metin": .metin("Kısa"), "dugme": .metin("Yazıyı oku"),
+            "link": .metin("/blog/schengen-vizesi-nasil-basvurulur"), "gorsel": .metin(""), "havuzFoto": .metin("almanya-1"),
+            "odak": .metin(""), "ulke": .metin(""), "baslangic": .bos, "bitis": .bos, "sira": .tam(50), "durum": .metin("yayinda"),
+            "createdAt": .zaman(Date()), "createdBy": .metin(uid), "updatedAt": .zaman(Date()), "updatedBy": .metin(uid),
+        ])
+        let slayt = try await ben.belge("vitrin/icerik-\(i.id)")
+        kayitli.baslik = "Schengen vizesi rehberi"
+        kayitli.slug = "schengen-rehberi"
+        try await ben.isle(IcerikIslemi.kaydet(kayitli, yeni: false, yayinlayabilir: true, slayt: slayt, calisan: c))
+        let _s = try await ben.belge("vitrin/icerik-\(i.id)")
+        let s2 = try XCTUnwrap(_s)
+        XCTAssertEqual(s2["baslik"], .metin("Schengen vizesi rehberi"))
+        XCTAssertEqual(s2["link"], .metin("/blog/schengen-rehberi"))
+        XCTAssertEqual(s2["havuzFoto"], .metin("almanya-1"), "görsel korunur")
+        XCTAssertEqual(s2["metin"], .metin("Kısa"))
+        let _a2 = try await ben.belge("content/\(i.id)")
+        let k2 = Icerik(kimlik: i.id, alanlar: try XCTUnwrap(_a2))
+        XCTAssertEqual(k2.yayinTarihi, kayitli.yayinTarihi, "ilk yayın tarihi korunur")
+
+        // Slug çakışması sorgusu (uygulama kaydetmeden önce bakar).
+        let ayni = try await ben.sorgu(koleksiyon: "content", kosullar: [.esit("slug", .metin("schengen-rehberi"))], sinir: 5)
+        XCTAssertEqual(ayni.map(\.kimlik), [i.id])
+
+        try await ben.isle(IcerikIslemi.sil(k2, slaytVar: true, calisan: c))
+        let silinen = try await owner.belge("content/\(i.id)")
+        XCTAssertNil(silinen)
+    }
 }

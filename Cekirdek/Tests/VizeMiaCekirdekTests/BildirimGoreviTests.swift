@@ -50,3 +50,13 @@ final class BildirimGoreviTests: XCTestCase {
         XCTAssertNil(BildirimMetni.waBaglantisi(telefon: "", metin: "x"))
     }
 }
+
+final class EkipIcerikTests: XCTestCase {
+    func testSlug() {
+        // panel/js/util.js → slugify ile aynı sonuçlar.
+        XCTAssertEqual(Icerik.slug("Schengen Vizesi: Nasıl Başvurulur?"), "schengen-vizesi-nasil-basvurulur")
+        XCTAssertEqual(Icerik.slug("  İtalya’da Öğrenci Vizesi — 2026 "), "italya-da-ogrenci-vizesi-2026")
+        XCTAssertEqual(Icerik.slug("Çağrı & Şükrü"), "cagri-sukru")
+        XCTAssertEqual(Icerik.slug("---"), "")
+    }
+}
