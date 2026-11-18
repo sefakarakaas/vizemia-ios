@@ -126,3 +126,27 @@ final class EkipEmulatorTests: XCTestCase {
         }
     }
 }
+
+extension EkipEmulatorTests {
+    /// Şifre değiştirme: yanlış mevcut şifre reddedilir; değişince yeni şifreyle giriş olur.
+    func testSifreDegistirme() async throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let a = env["FIREBASE_AUTH_EMULATOR_HOST"] else { throw XCTSkip("Emülatör yok.") }
+        let k = KimlikIstemci(kimlikTaban: "http://\(a)/identitytoolkit.googleapis.com/v1", belirtecTaban: "http://\(a)/securetoken.googleapis.com/v1")
+        let ad = "sifre\(Int.random(in: 1000...9999))"
+        var i = URLRequest(url: URL(string: "http://\(a)/identitytoolkit.googleapis.com/v1/accounts:signUp?key=x")!)
+        i.httpMethod = "POST"
+        i.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        i.httpBody = try JSONSerialization.data(withJSONObject: ["email": "\(ad)@panel.vizemia.local", "password": "Eski-sifre-123", "returnSecureToken": true])
+        _ = try await Ag.gonder(i, oturum: .shared)
+        XCTAssertNotNil(KimlikIstemci.sifreHatasi("kisa"))
+        XCTAssertNotNil(KimlikIstemci.sifreHatasi("uzunamaozelyok1A"))
+        XCTAssertNil(KimlikIstemci.sifreHatasi("Yeni-Sifre-2026!"))
+        do { _ = try await k.sifreDegistir(kullaniciAdi: ad, mevcut: "yanlis-sifre", yeni: "Yeni-Sifre-2026!"); XCTFail("mevcut şifre yanlış") }
+        catch let h as KimlikIstemci.Hata { XCTAssertEqual(h, .bilgilerYanlis) }
+        let o = try await k.sifreDegistir(kullaniciAdi: ad, mevcut: "Eski-sifre-123", yeni: "Yeni-Sifre-2026!")
+        XCTAssertFalse(o.belirtec.isEmpty)
+        let yeni = try await k.giris(kullaniciAdi: ad, sifre: "Yeni-Sifre-2026!")
+        XCTAssertEqual(yeni.uid, o.uid)
+    }
+}

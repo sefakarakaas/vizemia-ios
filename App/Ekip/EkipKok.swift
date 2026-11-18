@@ -27,6 +27,9 @@ enum EkipRota: Hashable {
     case slayt(String?)         // nil: yeni slayt
     case havuz
     case sosyal
+    case sifre
+    case kullanicilar
+    case islemKayitlari
     case kasaRutinler
     case bolum(String)          // ana sayfa kutusu: "musteriler", "kasa" …
     case yakinda(String)        // henüz uygulamada olmayan panel ekranı
@@ -98,6 +101,9 @@ struct EkipKok: View {
                     case .slayt(let id): VitrinDuzenleEkrani(kimlik: id)
                     case .havuz: HavuzEkrani()
                     case .sosyal: SosyalEkrani()
+                    case .sifre: SifreDegistirEkrani()
+                    case .kullanicilar: KullanicilarEkrani()
+                    case .islemKayitlari: IslemKayitlariEkrani()
                     case .kasaRutinler: RutinOdemelerEkrani()
                     case .bolum(let id): BolumEkrani(id: id)
                     case .yakinda(let ad): YakindaEkrani(ad: ad)

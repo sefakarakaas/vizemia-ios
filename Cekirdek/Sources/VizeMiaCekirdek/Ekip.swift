@@ -91,6 +91,28 @@ public struct KimlikIstemci {
                       bitis: simdi.addingTimeInterval(Double(KimlikIstemci.sure(j["expires_in"]))))
     }
 
+    /// Yeni şifrenin kuralı (panel: en az 12 karakter; büyük harf, küçük harf, rakam ve özel karakter). Boş: uygun.
+    public static func sifreHatasi(_ s: String) -> String? {
+        if s.count < 12 { return "Yeni şifre en az 12 karakter olmalı." }
+        if !s.contains(where: { $0.isUppercase }) { return "Yeni şifrede büyük harf olmalı." }
+        if !s.contains(where: { $0.isLowercase }) { return "Yeni şifrede küçük harf olmalı." }
+        if !s.contains(where: { $0.isNumber }) { return "Yeni şifrede rakam olmalı." }
+        if !s.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) { return "Yeni şifrede özel karakter (ör. ! ? * .) olmalı." }
+        return nil
+    }
+
+    /// Şifre değiştirme: önce mevcut şifreyle yeniden doğrulanır (panel: reauthenticate),
+    /// sonra yeni şifre yazılır. Yeni oturum döner (eski belirteçler geçersiz olur).
+    public func sifreDegistir(kullaniciAdi: String, mevcut: String, yeni: String, simdi: Date = Date()) async throws -> Oturum {
+        let o = try await giris(kullaniciAdi: kullaniciAdi, sifre: mevcut, simdi: simdi)
+        let govde: [String: Any] = ["idToken": o.belirtec, "password": yeni, "returnSecureToken": true]
+        let j = try await istek("\(kimlikTaban)/accounts:update?key=\(KimlikIstemci.apiAnahtari)",
+                                govde: try JSONSerialization.data(withJSONObject: govde), tur: "application/json")
+        guard let b = j["idToken"] as? String, let y = j["refreshToken"] as? String else { throw Hata.sunucu("eksik cevap") }
+        return Oturum(uid: (j["localId"] as? String) ?? o.uid, belirtec: b, yenileme: y,
+                      bitis: simdi.addingTimeInterval(Double(KimlikIstemci.sure(j["expiresIn"]))))
+    }
+
     static func sure(_ v: Any?) -> Int {
         if let s = v as? String, let n = Int(s) { return n }
         if let n = v as? Int { return n }
@@ -118,6 +140,9 @@ public struct KimlikIstemci {
             || m.hasPrefix("INVALID_EMAIL") { return .bilgilerYanlis }
         if m.hasPrefix("USER_DISABLED") { return .hesapKapali }
         if m.hasPrefix("TOO_MANY_ATTEMPTS") { return .cokDeneme }
+        if m.hasPrefix("WEAK_PASSWORD") || m.hasPrefix("PASSWORD_DOES_NOT_MEET_REQUIREMENTS") {
+            return .sunucu("yeni şifre güvenlik kurallarına uymuyor")
+        }
         if m.hasPrefix("TOKEN_EXPIRED") || m.hasPrefix("INVALID_REFRESH_TOKEN") || m.hasPrefix("USER_NOT_FOUND") { return .oturumBitti }
         return .sunucu(m.isEmpty ? "\(kod)" : m)
     }

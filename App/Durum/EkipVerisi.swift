@@ -25,11 +25,11 @@ final class EkipVerisi {
     private var tekrarlar: [Basvuru] = []
     private var takvimYuklemesi: Date?
     /// Başvurular listesi: ekrandan çıkıp girince yeniden okunmasın diye burada.
-    let basvurular = BasvuruListesiVerisi()
+    private(set) var basvurular = BasvuruListesiVerisi()
     /// Kasa raporu ve rutin ödemeler (Kasa ekranı ile rutin ödemeler ekranı aynı veriyi kullanır).
-    let kasa = KasaVerisi()
+    private(set) var kasa = KasaVerisi()
     /// Vitrin slaytları ve fotoğraf havuzu.
-    let vitrin = VitrinVerisi()
+    private(set) var vitrin = VitrinVerisi()
     /// Bir ekrandan ötekine taşınan bilgi (ör. kaydedilen formdan sonra ayrıntıda gösterilir).
     var sonMesaj: String?
 
@@ -190,5 +190,7 @@ final class EkipVerisi {
     func temizle() {
         talepler = []; kapananlar = []; destek = []; takvim = []; sonYukleme = nil; hata = nil
         randevular = []; tekrarlar = []; takvimYuklemesi = nil
+        // Çıkışta öteki çalışanın verisi telefonda kalmasın.
+        basvurular = BasvuruListesiVerisi(); kasa = KasaVerisi(); vitrin = VitrinVerisi(); sonMesaj = nil
     }
 }

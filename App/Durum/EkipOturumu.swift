@@ -93,6 +93,25 @@ final class EkipOturumu {
         }
     }
 
+    /// Şifre değiştirme (panel: Şifremi değiştir). Yeni oturum saklanır. Hata metni döner (nil: tamam).
+    func sifreDegistir(mevcut: String, yeni: String) async -> String? {
+        guard let c = calisan else { return "Oturum bulunamadı." }
+        if let h = KimlikIstemci.sifreHatasi(yeni) { return h }
+        do {
+            let o = try await kimlik.sifreDegistir(kullaniciAdi: c.kullaniciAdi, mevcut: mevcut, yeni: yeni)
+            oturum = o
+            AnahtarZinciri.yaz(o, servis: EkipOturumu.servis, hesap: "oturum")
+            try? await istemci().isle([.olustur(yol: "audit/\(FirestoreIstemci.yeniKimlik())",
+                                                alanlar: IslemKaydi.alanlar(eylem: "password.change", hedef: "", ayrinti: "", calisan: c),
+                                                zaman: ["at"])])
+            return nil
+        } catch let h as KimlikIstemci.Hata {
+            return h == .bilgilerYanlis ? "Mevcut şifre hatalı." : h.mesaj
+        } catch {
+            return "Şifre değiştirilemedi."
+        }
+    }
+
     func cikis() {
         oturum = nil
         calisan = nil

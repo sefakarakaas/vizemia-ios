@@ -872,4 +872,47 @@ final class BasvuruEmulatorTests: XCTestCase {
         let _i = try await ben.belge("postIstekleri/\(istekler[0].id)")
         XCTAssertEqual(PostIstegi(kimlik: istekler[0].id, alanlar: try XCTUnwrap(_i)).durum, "iptal")
     }
+
+    /// Kullanıcılar (yalnız yönetici): ekle, güncelle, kendini düşüremez, sil; işlem kayıtları.
+    func testKullanicilar() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let yon = try await e.hesapAc("yon\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(yon)", alanlar: [
+            "username": .metin("yon\(ek)"), "displayName": .metin("Sefa"), "role": .metin("admin"), "active": .mantik(true)])
+        let o = try await e.kimlik.giris(kullaniciAdi: "yon\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(yon)")
+        let c = Calisan(uid: yon, belge: try XCTUnwrap(_c), izinBelgesi: nil)
+
+        let uid = "Uid\(ek)abcdefghijklmnopqrstu"
+        let r = CalisanKaydi.ekle(uid: uid, kullaniciAdi: "ayse.\(ek)", ad: "Ayşe Kaya", eposta: "Ayse@Vizemia.com", rol: "writer", mevcut: [], calisan: c)
+        XCTAssertNil(r.hata)
+        try await ben.isle(r.yazimlar)
+        XCTAssertNotNil(CalisanKaydi.ekle(uid: "kisa", kullaniciAdi: "x", ad: "", eposta: "", rol: "writer", mevcut: [], calisan: c).hata)
+        let _k = try await ben.belge("employees/\(uid)")
+        var k = CalisanKaydi(kimlik: uid, alanlar: try XCTUnwrap(_k))
+        XCTAssertEqual(k.eposta, "ayse@vizemia.com")
+        XCTAssertTrue(k.talepBildirimi)
+        k.rol = "reader"
+        k.aktif = false
+        try await ben.isle(CalisanKaydi.guncelle(k, calisan: c))
+        let _k2 = try await ben.belge("employees/\(uid)")
+        let k2 = CalisanKaydi(kimlik: uid, alanlar: try XCTUnwrap(_k2))
+        XCTAssertEqual(k2.rol, "reader")
+        XCTAssertFalse(k2.talepBildirimi, "izleyiciye bildirim gitmez")
+
+        // Kilitlenme koruması: yönetici kendini düşüremez ve silemez.
+        let _b = try await ben.belge("employees/\(yon)")
+        var kendi = CalisanKaydi(kimlik: yon, alanlar: try XCTUnwrap(_b))
+        kendi.rol = "writer"
+        do { try await ben.isle(CalisanKaydi.guncelle(kendi, calisan: c)); XCTFail("kendini düşüremez") } catch {}
+        do { try await ben.isle(CalisanKaydi.sil(kendi, calisan: c)); XCTFail("kendini silemez") } catch {}
+        try await ben.isle(CalisanKaydi.sil(k2, calisan: c))
+
+        let kayitlar = try await ben.sorgu(koleksiyon: "audit", sirala: ("at", .azalan), sinir: 20)
+            .map { IslemSatiri(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        XCTAssertTrue(kayitlar.contains { $0.eylem == "user.delete" && $0.eylemAdi == "Kullanıcıyı sildi" })
+        XCTAssertTrue(kayitlar.first { $0.eylem == "user.create" }?.eslesir("kullanıcı ekledi") ?? false)
+    }
 }
