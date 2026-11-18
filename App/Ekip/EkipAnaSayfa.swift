@@ -46,7 +46,7 @@ struct EkipBolumu: Identifiable {
         ]),
         EkipBolumu(id: "ayarlar", ad: "Ayarlar", simge: "gearshape.fill", ogeler: [
             Oge(id: "surec", ad: "Süreç adımları", simge: "list.number", izin: "surec.edit|vitrin.edit|vitrin.publish", yonetici: false, rota: .surec),
-            Oge(id: "ayarlar", ad: "Ayarlar", simge: "gearshape.fill", izin: "", yonetici: true, rota: nil),
+            Oge(id: "ayarlar", ad: "Ayarlar", simge: "gearshape.fill", izin: "", yonetici: true, rota: .ayarlar),
             Oge(id: "kullanicilar", ad: "Kullanıcılar", simge: "person.3.fill", izin: "", yonetici: true, rota: .kullanicilar),
             Oge(id: "kayitlar", ad: "İşlem kayıtları", simge: "list.bullet.rectangle.fill", izin: "", yonetici: true, rota: .islemKayitlari),
         ]),

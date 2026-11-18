@@ -296,6 +296,8 @@ public struct FirestoreIstemci {
         /// yol ayrı ayrı maskelenir, aynı haritadaki öteki alanlara dokunulmaz.
         /// `zaman`: sunucu zamanı yazılacak yollar (ör. ["kanallar", "x", "paylasildi_tarih"]).
         case derin(yol: String, alanlar: [[String]: FSDeger], zaman: [[String]] = [])
+        /// Yalnız verilen alanlar; belge yoksa oluşturulur (panelin `setDoc(…, { merge: true })`).
+        case birlestir(yol: String, alanlar: [String: FSDeger], zaman: [String] = [])
     }
 
     /// Yazımları tek istekte (documents:commit) gönderir.
@@ -334,6 +336,13 @@ public struct FirestoreIstemci {
             return g
         case let .sil(yol):
             return ["delete": "\(kok)/\(yol)"]
+        case let .birlestir(yol, alanlar, zaman):
+            var g: [String: Any] = [
+                "update": ["name": "\(kok)/\(yol)", "fields": alanlar.mapValues { $0.json }],
+                "updateMask": ["fieldPaths": alanlar.keys.sorted().map { FirestoreIstemci.alanYolu([$0]) }],
+            ]
+            if !zaman.isEmpty { g["updateTransforms"] = donustur(zaman) }
+            return g
         case let .derin(yol, alanlar, zaman):
             var agac: [String: FSDeger] = [:]
             for (parcalar, deger) in alanlar { FirestoreIstemci.yerlestir(&agac, parcalar[...], deger) }

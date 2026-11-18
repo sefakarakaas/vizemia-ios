@@ -979,4 +979,68 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(bk.hatalar, [])
         try await ben.isle(bk.yazimlar)
     }
+
+    /// Ayarlar (yönetici): mesai ve tatil, genel (hesaplar korunur), izinler, kasa listeleri, bildirim ve SMS; çalışan yazamaz.
+    func testAyarlar() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let yon = try await e.hesapAc("ayar\(ek)", "gizli-sifre-1")
+        let cal = try await e.hesapAc("cal\(ek)", "gizli-sifre-2")
+        try await owner.belgeYaz("employees/\(yon)", alanlar: [
+            "username": .metin("ayar\(ek)"), "displayName": .metin("Sefa"), "role": .metin("admin"), "active": .mantik(true)])
+        try await owner.belgeYaz("employees/\(cal)", alanlar: [
+            "username": .metin("cal\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/general", alanlar: [
+            "retentionDays": .tam(60), "firmaHesaplar": .dizi([.harita(["id": .metin("h1"), "platform": .metin("Instagram"), "kullaniciAdi": .metin("vizemiacom")])]),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "ayar\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(yon)")
+        let c = Calisan(uid: yon, belge: try XCTUnwrap(_c), izinBelgesi: nil)
+
+        var m = Mesai.varsayilan
+        m.calisma[6] = nil
+        m.tatiller = ["2026-12-31", "2026-10-29"]
+        XCTAssertEqual(Ayarlar.mesaiHatalari(m), [])
+        XCTAssertEqual(Ayarlar.mesaiTekSatir(m), "Hafta içi 09:00–18:00")
+        try await ben.isle(Ayarlar.mesaiYaz(m, calisan: c))
+        let _m = try await ben.belge("settings/mesai")
+        let okunan = Ayarlar.mesai(belge: _m)
+        XCTAssertNil(okunan.calisma[6])
+        XCTAssertEqual(okunan.calisma[1], [540, 1080])
+        XCTAssertEqual(okunan.tatiller, ["2026-10-29", "2026-12-31"])
+        var bozuk = m
+        bozuk.calisma[2] = [600, 540]
+        XCTAssertFalse(Ayarlar.mesaiHatalari(bozuk).isEmpty)
+
+        var g = Ayarlar.Genel(belge: try await ben.belge("settings/general"))
+        g.bosDakika = 45
+        g.firmaTelefon = "0549 907 25 23"
+        XCTAssertEqual(g.hatalar, [])
+        try await ben.isle(Ayarlar.genelYaz(g, calisan: c))
+        let _g = try await ben.belge("settings/general")
+        XCTAssertEqual(_g?["idleMinutes"], .tam(45))
+        XCTAssertNotNil(_g?["firmaHesaplar"], "sosyal medya hesapları korunur")
+
+        var r = Ayarlar.rolIzinleri(belge: nil)
+        r["intern"]?.insert("kasa.gider")
+        try await ben.isle(Ayarlar.izinleriYaz(r, calisan: c))
+        let _p = try await ben.belge("settings/permissions")
+        XCTAssertTrue(Ayarlar.rolIzinleri(belge: _p)["intern"]?.contains("kasa.gider") ?? false)
+
+        let k = Ayarlar.kasaListeleriYaz(musteri: ["Fotokopi", " Fotokopi "], genel: ["Market"], burolar: ["Kızılay Döviz"], raporSaati: "19:30", calisan: c)
+        XCTAssertNil(k.hata)
+        try await ben.isle(k.yazimlar)
+        let _k = try await ben.belge("settings/kasa")
+        XCTAssertEqual(KasaAyari(alanlar: _k).musteriGiderleri, ["Fotokopi"])
+        XCTAssertNotNil(Ayarlar.kasaListeleriYaz(musteri: ["a"], genel: ["b"], burolar: [], raporSaati: "25:00", calisan: c).hata)
+        try await ben.isle(Ayarlar.bildirimYaz(acik: false, pencereBas: 9, pencereSon: 21, calisan: c).yazimlar)
+        try await ben.isle(Ayarlar.smsYaz(acik: true, calisan: c))
+        let _b = try await ben.belge("settings/bildirim")
+        XCTAssertEqual(BildirimAyari(belge: _b).acik, false)
+
+        let co = try await e.kimlik.giris(kullaniciAdi: "cal\(ek)", sifre: "gizli-sifre-2")
+        let calIst = e.istemci(co.belirtec)
+        do { try await calIst.isle(Ayarlar.smsYaz(acik: false, calisan: c)); XCTFail("yalnız yönetici") } catch {}
+    }
 }
