@@ -21,6 +21,10 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 - Durum: `EkipOturumu` (giriş, izinler, statüler, ayarlar), `EkipVerisi` (talepler, destek, takvim, başvurular listesi), `BasvuruVerisi.swift` (liste ve ayrıntı). Yazımlar çekirdekte: `BasvuruIslemi` (statü + takip sayfası + mail/SMS kuyruğu tek yazımda), emülatörde `BasvuruEmulatorTests` gerçek kurallarla dener.
 - Kasa: `KasaVerisi` (rapor yalnız seçilen dönemi okur, en çok 1000; kayıttan sonra yalnız o belge), çekirdekte `Kasa.swift` (panel/js/kasa.js karşılığı: rapor toplamları, döviz çevrimi, rutin ödeme vadeleri, CSV) ve `KasaIslemi` (fiş aynı yazımda; emülatörde `testKasa`).
 - Pasaport kontrolü: fotoğraf telefonda Vision ile okunur (`MrzOkuyucu`), çekirdekte `Mrz` (mrz.js karşılığı) ve `PasaportKontrolu`; yalnız sonuç yazılır.
+- İletiler: `BildirimGorevi` / `BildirimMetni` (WhatsApp görevleri, şablon doldurma), `Eposta.swift`, `FirmaMaili.swift` (cevap mailinin HTML'i sitenin JS çıktısıyla testte karşılaştırılır: `Tests/…/Ornekler`).
+- Site içeriği: `SiteIcerigi.swift` (süreç adımları, vitrin slaytı, `SiteYayini` — kayıttan sonra yayın işini başlatır), `Icerik.swift` (blog/SSS), `FotoHavuzu.swift` (otomatik arka plan seçimi sitenin foto-havuzu.js'iyle bire bir), `Sosyal.swift`.
+- Yönetim: `Kullanicilar.swift` (çalışanlar, işlem kayıtları), `Ayarlar.swift`, `Armut.swift` (Armut ve elle talep).
+- Düzenlemede oluşturma alanları (createdAt…) okunup geri yazılmaz: zaman hassasiyeti kaybolur, kural "değişmedi" denetiminde reddeder. Yalnız değişen alanlar (`.guncelle`, `.derin`, `.birlestir`).
 - Ekran testinde örnek veri: `-ornek-ekip` (yalnız geliştirme derlemesi; ağa dokunmaz).
 
 ## Yapı
