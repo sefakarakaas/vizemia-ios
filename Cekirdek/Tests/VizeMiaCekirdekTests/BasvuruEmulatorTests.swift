@@ -373,6 +373,29 @@ final class BasvuruEmulatorTests: XCTestCase {
         let yeni = try XCTUnwrap(tumu.first { $0.alanlar["kind"] == .metin("randevu-alindi") })
         XCTAssertEqual(yeni.alanlar["randevuYeri"], .metin("ABD Büyükelçiliği (Ankara)"))
         XCTAssertEqual(yeni.alanlar["email"], .metin("ece@ornek.com"))
+
+        // Bildirimler ekranı: "Şimdi gönder", "Gönderdim", "İptal et" (sitenin kurallarıyla).
+        var g = BildirimGorevi(kimlik: yeni.kimlik, alanlar: yeni.alanlar)
+        XCTAssertFalse(g.waGorevi, "randevu alındı: 30 dk beklemede görev açılmaz")
+        try await ben.isle(BasvuruIslemi.bildirimSimdi(g, calisan: calisan))
+        let _g1 = try await ben.belge("bildirimler/\(g.id)")
+        g = BildirimGorevi(kimlik: g.id, alanlar: try XCTUnwrap(_g1))
+        XCTAssertTrue(g.zorla)
+        XCTAssertTrue(g.waGorevi)
+        XCTAssertFalse(BildirimMetni.kur(g, ayar: BildirimAyari(belge: nil)).metin.isEmpty)
+        try await ben.isle(BasvuruIslemi.waGonderildi(g, calisan: calisan))
+        let _g2 = try await ben.belge("bildirimler/\(g.id)")
+        g = BildirimGorevi(kimlik: g.id, alanlar: try XCTUnwrap(_g2))
+        XCTAssertEqual(g.waDurum, "sent")
+        XCTAssertNotNil(g.waZaman)
+        let hat = try XCTUnwrap(tumu.first { $0.alanlar["kind"] == .metin("evrak-hatirlatma") && $0.alanlar["status"] == .metin("planned") })
+        let h = BildirimGorevi(kimlik: hat.kimlik, alanlar: hat.alanlar)
+        try await ben.isle(BasvuruIslemi.bildirimIptal(h, calisan: calisan))
+        let _h = try await ben.belge("bildirimler/\(h.id)")
+        let iptal = BildirimGorevi(kimlik: h.id, alanlar: try XCTUnwrap(_h))
+        XCTAssertEqual(iptal.durum, "cancelled")
+        XCTAssertEqual(iptal.iptalSebebi, "Sefa Karakaş iptal etti")
+        XCTAssertFalse(iptal.waGorevi, "iptal edilenin WhatsApp görevi de düşer")
     }
 
     func testYeniBasvuruVeDuzenleme() async throws {

@@ -175,6 +175,9 @@ public struct BildirimAyari: Equatable {
         public var mod: String        // hemen | sonrasi | oncesi
         public var gun: Int
         public var saat: Int?
+        /// Mesaj metni ve e-posta konusu (yer tutucularla; gönderim anında doldurulur).
+        public var metin = ""
+        public var konu = ""
     }
     public var acik: Bool
     public var pencereBas: Int
@@ -191,9 +194,23 @@ public struct BildirimAyari: Equatable {
     }
 
     static let varsayilan: [String: Sablon] = [
-        "randevu-alindi": Sablon(acik: true, mod: "hemen", gun: 0, saat: nil),
-        "evrak-hatirlatma": Sablon(acik: true, mod: "oncesi", gun: 15, saat: 9),
-        "form-linki": Sablon(acik: true, mod: "kural", gun: 0, saat: 9),
+        "randevu-alindi": Sablon(acik: true, mod: "hemen", gun: 0, saat: nil,
+                                 metin: "🎉 Müjde {isim}!\n{ülke} vize randevunuz alındı. ✈️\n{randevu bilgileri}\n"
+                                     + "Randevunuza {hatırlatma günü} gün kala evraklarınızla ilgili size tekrar hatırlatma yapacağız.\n"
+                                     + "Sorunuz olursa bize yazabilirsiniz. 😊\n— VizeMia",
+                                 konu: "{ülke} vize randevunuz alındı 🎉"),
+        "evrak-hatirlatma": Sablon(acik: true, mod: "oncesi", gun: 15, saat: 9,
+                                   metin: "📂 Merhaba {isim},\n{ülke} vize randevunuza {hatırlatma günü} gün kaldı! ⏳\n"
+                                       + "📅 Randevu tarihiniz: {randevu tarihi}\nEvraklarınızı hazırlamaya başlamanız gerekiyor.\n"
+                                       + "⚠️ Evraklarınızın en geç {evrak son tarihi} tarihinde bizde olması gerekiyor.\n"
+                                       + "Takıldığınız bir şey olursa bize yazabilirsiniz, yardımcı oluruz.\n— VizeMia",
+                                   konu: "{ülke} randevunuza {hatırlatma günü} gün kaldı — evraklar"),
+        "form-linki": Sablon(acik: true, mod: "kural", gun: 0, saat: 9,
+                             metin: "📝 Merhaba {isim},\n{ülke} vize başvurunuz için formunuz hazır.\n"
+                                 + "Aşağıdaki bağlantıdan bilgilerinizi tamamlayıp evraklarınızı yükleyebilirsiniz:\n{form bağlantısı}\n"
+                                 + "🔒 Bu bağlantı yalnızca size özel; başkasıyla paylaşmayın.\n"
+                                 + "Takıldığınız bir yer olursa bize yazabilirsiniz.\n— VizeMia",
+                             konu: "{ülke} vize başvurunuz — formunuz hazır"),
     ]
 
     static func sinirla(_ d: FSDeger?, _ alt: Int, _ ust: Int, _ yedek: Int) -> Int {
@@ -214,6 +231,8 @@ public struct BildirimAyari: Equatable {
         if let h = m["hour"] {
             if case .bos = h { t.saat = nil } else { t.saat = sinirla(h, 0, 23, 9) }
         }
+        if let x = m["text"]?.metinDegeri { t.metin = x }
+        if let x = m["emailSubject"]?.metinDegeri { t.konu = x }
         return t
     }
 

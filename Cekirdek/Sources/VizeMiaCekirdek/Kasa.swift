@@ -231,9 +231,15 @@ public struct KasaOzeti: Equatable {
         public var gelir: ParaToplami = [:]
         public var gider: ParaToplami = [:]
         public var cevrim: ParaToplami = [:]
+        public init(gelir: ParaToplami = [:], gider: ParaToplami = [:], cevrim: ParaToplami = [:]) {
+            self.gelir = gelir; self.gider = gider; self.cevrim = cevrim
+        }
     }
     public struct Sayilar: Equatable {
         public var gelir = 0, gider = 0, cevrim = 0, iptal = 0, tutarsizGelir = 0
+        public init(gelir: Int = 0, gider: Int = 0, cevrim: Int = 0, iptal: Int = 0, tutarsizGelir: Int = 0) {
+            self.gelir = gelir; self.gider = gider; self.cevrim = cevrim; self.iptal = iptal; self.tutarsizGelir = tutarsizGelir
+        }
     }
     public var gelir: ParaToplami = [:]
     public var gider: ParaToplami = [:]
