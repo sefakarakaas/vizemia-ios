@@ -30,6 +30,7 @@ enum EkipRota: Hashable {
     case sifre
     case kullanicilar
     case islemKayitlari
+    case armut
     case kasaRutinler
     case bolum(String)          // ana sayfa kutusu: "musteriler", "kasa" …
     case yakinda(String)        // henüz uygulamada olmayan panel ekranı
@@ -104,6 +105,7 @@ struct EkipKok: View {
                     case .sifre: SifreDegistirEkrani()
                     case .kullanicilar: KullanicilarEkrani()
                     case .islemKayitlari: IslemKayitlariEkrani()
+                    case .armut: ArmutEkrani()
                     case .kasaRutinler: RutinOdemelerEkrani()
                     case .bolum(let id): BolumEkrani(id: id)
                     case .yakinda(let ad): YakindaEkrani(ad: ad)

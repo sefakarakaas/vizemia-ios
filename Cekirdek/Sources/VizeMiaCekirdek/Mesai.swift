@@ -59,6 +59,22 @@ public struct Mesai: Equatable {
         tatiller = Set((ayar?.tatiller ?? []).filter { $0.eslesir("^[0-9]{4}-[0-9]{2}-[0-9]{2}$") })
     }
 
+    /// Arama saati seçeneklerinin tümü: her açık günün yarım saatleri, birleşik (panel: aramaDilimleri).
+    public var aramaDilimleri: [String] {
+        var k = Set<Int>()
+        for a in calisma.values where a.count == 2 { for dk in stride(from: a[0], to: a[1], by: 30) { k.insert(dk) } }
+        return k.sorted().map { Mesai.hhmm($0) }
+    }
+
+    /// Türkiye saatiyle şimdiki yarım saat; mesai dışındaysa en yakın uç (panel: simdikiSaat).
+    public func simdikiSaat(_ simdi: Date = Date()) -> String {
+        let a = Mesai.trSimdi(simdi)
+        let s = Mesai.hhmm(a.dakika / 30 * 30)
+        let l = aramaDilimleri
+        guard let ilk = l.first, let son = l.last, !l.contains(s) else { return s }
+        return s < ilk ? ilk : son
+    }
+
     public static func hhmm(_ dakika: Int) -> String {
         "\(Tr.iki(dakika / 60)):\(Tr.iki(dakika % 60))"
     }

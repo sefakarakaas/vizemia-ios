@@ -8,6 +8,8 @@ struct TaleplerEkrani: View {
     @State private var filtre: Filtre = .acik
     @State private var tur: TurFiltresi = .hepsi
     @State private var arama = ""
+    @State private var elleAcik = false
+    @State private var elleMesaj: String?
 
     enum Filtre: String, CaseIterable, Identifiable {
         case acik = "Açık", kapanan = "Kapanan"
@@ -85,6 +87,12 @@ struct TaleplerEkrani: View {
                 }
                 .animation(Hareket.yay, value: liste.map { $0.id })
                 .toolbar {
+                    if ekip.yapabilir("lead.manage") {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { elleAcik = true } label: { Image(systemName: "phone.badge.plus") }
+                                .accessibilityLabel("Telefonla gelen müşteri")
+                        }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Picker("Tür", selection: $tur) {
@@ -100,6 +108,25 @@ struct TaleplerEkrani: View {
         }
         .navigationTitle("Talepler")
         .task { await veri.yukle(ekip) }
+        .sheet(isPresented: $elleAcik) {
+            ElleTalepSayfasi { m in
+                elleMesaj = m
+                Task { await veri.yukle(ekip, zorla: true) }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let m = elleMesaj {
+                Label(m, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Color.white)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Tema.olumluKoyu, in: Capsule())
+                    .padding(.bottom, 8)
+                    .task {
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        elleMesaj = nil
+                    }
+            }
+        }
     }
 
     private var ozetSatiri: some View {

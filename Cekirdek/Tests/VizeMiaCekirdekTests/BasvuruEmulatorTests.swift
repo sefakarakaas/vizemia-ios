@@ -915,4 +915,68 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertTrue(kayitlar.contains { $0.eylem == "user.delete" && $0.eylemAdi == "Kullanıcıyı sildi" })
         XCTAssertTrue(kayitlar.first { $0.eylem == "user.create" }?.eslesir("kullanıcı ekledi") ?? false)
     }
+
+    /// Telefonla gelen talep ve Armut: inceleme durumu, iç not, Talepler'e aktarma (telefonlu / telefonsuz).
+    func testElleTalepVeArmut() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("armut\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("armut\(ek)"), "displayName": .metin("Aleyna Yılmaz"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        func armut(_ id: String, telefon: String) -> [String: FSDeger] {
+            ["isId": .metin(id), "ad": .metin(telefon.isEmpty ? "" : "Mehmet Demir"), "telefon": .metin(telefon), "baslik": .metin("Schengen vizesi"),
+             "kategori": .metin("Vize danışmanlığı"), "konum": .metin("Ankara"), "teklifTutari": .tam(2500), "paraBirimi": .metin("TRY"),
+             "armutDurum": .metin("quoted"), "aciklama": .metin("Almanya, aile ziyareti"), "url": .metin("https://armut.com/is/\(id)"),
+             "soruCevap": .dizi([.harita(["soru": .metin("Kaç kişi?"), "cevap": .metin("2")])]), "incelemeDurum": .metin("yeni"),
+             "createdAt": .zaman(Date())]
+        }
+        try await owner.belgeYaz("armutTalepleri/armut_a\(ek)", alanlar: armut("a\(ek)", telefon: "+905321112233"))
+        try await owner.belgeYaz("armutTalepleri/armut_b\(ek)", alanlar: armut("b\(ek)", telefon: ""))
+        let o = try await e.kimlik.giris(kullaniciAdi: "armut\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let bugun = Tr.bugun()
+        let mesai = Mesai(calisma: [0: [540, 1080], 1: [540, 1080], 2: [540, 1080], 3: [540, 1080], 4: [540, 1080], 5: [540, 1080], 6: [540, 1080]], tatiller: [])
+
+        // Telefonla gelen müşteri: yarın 10:30'da aranacak.
+        var t = ElleTalep()
+        t.ad = "  Ayşe   Kaya "; t.telefon = "0532 444 55 66"; t.sonra = true; t.tarih = Tr.gunEkle(bugun, 1); t.saat = "10:30"; t.onay = true
+        let r = t.kayit(bugun: bugun, mesai: mesai)
+        XCTAssertEqual(r.hatalar, [])
+        try await ben.isle(ElleTalep.yazimlar(try XCTUnwrap(r.alanlar), calisan: c))
+        var bos = ElleTalep()
+        bos.ad = "A"
+        XCTAssertEqual(bos.kayit(bugun: bugun, mesai: mesai).hatalar.count, 3, "ad, telefon, KVKK")
+
+        let _a = try await ben.belge("armutTalepleri/armut_a\(ek)")
+        let a = ArmutIsi(kimlik: "armut_a\(ek)", alanlar: try XCTUnwrap(_a))
+        XCTAssertTrue(a.talepNotu.contains("Teklifimiz: 2.500 ₺ · Armut durumu: Teklif verildi"))
+        try await ben.isle(ArmutIsi.durumYazimlari(a, "incelendi", calisan: c))
+        try await ben.isle([ArmutIsi.guncelle(a, icNot: "Akşam aranacak", calisan: c)])
+        var gorusme = ElleTalep()
+        gorusme.onay = true
+        let ak = ArmutIsi.aktar(a, talep: gorusme, bugun: bugun, mesai: mesai, calisan: c)
+        XCTAssertEqual(ak.hatalar, [])
+        try await ben.isle(ak.yazimlar)
+        let _a2 = try await ben.belge("armutTalepleri/armut_a\(ek)")
+        let a2 = ArmutIsi(kimlik: a.id, alanlar: try XCTUnwrap(_a2))
+        XCTAssertEqual(a2.incelemeDurum, "aktarildi")
+        XCTAssertEqual(a2.icNot, "Akşam aranacak")
+        XCTAssertEqual(a2.aktaranKisi, "Aleyna Yılmaz (armut\(ek))")
+        let _t = try await ben.belge("callback/\(a2.talepId)")
+        let talep = try XCTUnwrap(_t)
+        XCTAssertEqual(talep["status"], .metin("reached"))
+        XCTAssertEqual(talep["armutIsId"], .metin("a\(ek)"))
+
+        // Telefonu açılmamış iş: iletişim Armut'tan (telefon boş, kanal yok).
+        let _b = try await ben.belge("armutTalepleri/armut_b\(ek)")
+        let b = ArmutIsi(kimlik: "armut_b\(ek)", alanlar: try XCTUnwrap(_b))
+        let bk = ArmutIsi.aktar(b, talep: gorusme, bugun: bugun, mesai: mesai, calisan: c)
+        XCTAssertEqual(bk.hatalar, [])
+        try await ben.isle(bk.yazimlar)
+    }
 }
