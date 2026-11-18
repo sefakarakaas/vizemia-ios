@@ -382,6 +382,40 @@ final class BasvuruDetayVerisi {
         return await isle(EpostaIslemi.iptal(m, calisan: c), ekip, yenile: [.epostalar])
     }
 
+    // MARK: - Bildirim tercihleri
+
+    /// Kanallar + e-posta; planlı otomatik bildirimler yeni tercihe göre yeniden kurulur.
+    func tercihKaydet(_ k: Kanallar, eposta: String, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        let telefon = form?["phone"]?.metinDegeri ?? ""
+        let h = BildirimTercihi.hatalar(k, eposta: eposta, telefon: telefon)
+        if !h.isEmpty { return (false, h.joined(separator: " ")) }
+        guard BildirimTercihi.degisti(form, k, eposta: eposta) else { return (true, "Değişiklik yok.") }
+        let epostaDegisti = BildirimTercihi.epostaDuzelt(form?["email"]?.metinDegeri ?? "") != BildirimTercihi.epostaDuzelt(eposta)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return (true, "Bildirim tercihi kaydedildi.") }
+        #endif
+        if let hata = await isle(BildirimTercihi.kaydet(b, k, eposta: eposta, epostaDegisti: epostaDegisti, calisan: c), ekip, yenile: [.gecmis]) {
+            return (false, hata)
+        }
+        guard let f = try? await ekip.istemci() else { return (true, "Bildirim tercihi kaydedildi.") }
+        let v: [String: FSDeger]? = (try? await f.belge("\(yol)/private/data")) ?? nil
+        form = v.map { $0["form"]?.haritaDegeri ?? [:] }
+        guard ekip.yapabilir("app.status"),
+              let mevcut = try? await f.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(b.kimlik))], sinir: 50) else {
+            return (true, "Bildirim tercihi kaydedildi.")
+        }
+        let kural = FormGonderimKurali.gecerli(basvuru: b.formGonderim, ulke: ekip.ulkeFormlari[b.ulke]?.formGonderim).kural
+        let p = BildirimTercihi.yenidenPlanla(b, iletisim: MusteriIletisimi(form: form), ayar: ekip.bildirimAyari,
+                                              mevcut: mevcut.map { BildirimKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) },
+                                              formKurali: kural, calisan: c)
+        if p.adet == 0 { return (true, "Bildirim tercihi kaydedildi.") }
+        if (try? await f.isle(p.yazimlar)) == nil {
+            return (true, "Tercih kaydedildi ama planlı bildirimler güncellenemedi; Bildirimler ekranından kontrol edin.")
+        }
+        return (true, "Tercih kaydedildi; \(p.adet) planlı bildirim yeni tercihe göre düzenlendi.")
+    }
+
     // MARK: - Saklama ve silme (yalnız yönetici)
 
     func saklamaKaydet(gun: String, bekletme: Bool, gerekce: String, ekip: EkipOturumu) async -> String? {

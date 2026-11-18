@@ -1024,6 +1024,67 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(ayar.ulkeler.keys.sorted(), ["italya"])
     }
 
+    func testBildirimTercihi() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("tr\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("tr\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["app.edit", "app.sensitive", "app.status"]).map { .metin($0) }),
+        ])])
+        let appId = "tr\(ek)"
+        let randevu = Tr.tarih(Tr.gunEkle(Tr.bugun(), 30))!
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-11\(ek)"), "year": .tam(2026), "month": .tam(11),
+            "firstName": .metin("AYSE"), "lastName": .metin("KAYA"), "passportLast3": .metin("567"),
+            "country": .metin("italya"), "countryName": .metin("İtalya"),
+            "statusId": .metin("potansiyel"), "statusName": .metin("Potansiyel"), "checklist": .harita([:]),
+            "appointmentAt": .zaman(randevu),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+        ])
+        try await owner.belgeYaz("applications/\(appId)/private/data", alanlar: ["form": .harita([
+            "phone": .metin("+905321234567"), "email": .metin("ayse@ornek.com"), "passportNo": .metin("U1"),
+            "channels": .harita(["wa": .mantik(true), "sms": .mantik(true), "email": .mantik(true)])])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "tr\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+        let _f = try await ben.belge("applications/\(appId)/private/data")
+        let form = _f?["form"]?.haritaDegeri
+        // Önce üç kanalla planlanmış randevu bildirimleri (sitenin kurallarına uygun kayıtlar).
+        let gun = Tr.bugun(randevu)
+        let ilk = BildirimPlani.planla(b, randevu: RandevuGirdisi(tarih: gun, saat: "", merkez: "", sehir: "", yer: "", ulke: "italya"),
+                                       kayit: RandevuKurali.Kayit(saat: "", merkez: "", sehir: "", yer: "", harita: ""),
+                                       iletisim: MusteriIletisimi(form: form), ayar: BildirimAyari(belge: nil), mevcut: [], calisan: c)
+        try await ben.isle(ilk.yazimlar)
+
+        let yeni = Kanallar(wa: false, sms: true, email: false)
+        XCTAssertEqual(BildirimTercihi.hatalar(Kanallar(email: true), eposta: "yanlis", telefon: "x"), ["E-posta açık: geçerli bir e-posta adresi girin."])
+        XCTAssertTrue(BildirimTercihi.degisti(form, yeni, eposta: "ayse@ornek.com"))
+        XCTAssertFalse(BildirimTercihi.degisti(form, Kanallar(), eposta: " AYSE@ornek.com"))
+        try await ben.isle(BildirimTercihi.kaydet(b, yeni, eposta: "Ayse.Kaya@Ornek.com", epostaDegisti: true, calisan: c))
+        let _f2 = try await ben.belge("applications/\(appId)/private/data")
+        let form2 = try XCTUnwrap(_f2?["form"]?.haritaDegeri)
+        XCTAssertEqual(BildirimTercihi.oku(form2).kanallar, yeni)
+        XCTAssertEqual(form2["email"]?.metinDegeri, "ayse.kaya@ornek.com")
+        XCTAssertEqual(form2["passportNo"]?.metinDegeri, "U1")
+
+        // Planlı bildirim yeni tercihle yeniden kurulur (yalnız SMS).
+        let mevcut = try await ben.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+            .map { BildirimKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        let p = BildirimTercihi.yenidenPlanla(b, iletisim: MusteriIletisimi(form: form2), ayar: BildirimAyari(belge: nil), mevcut: mevcut,
+                                              formKurali: .varsayilan, calisan: c)
+        XCTAssertEqual(p.adet, 2)
+        try await ben.isle(p.yazimlar)
+        let sonra = try await ben.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+        let planli = sonra.filter { $0.alanlar["status"]?.metinDegeri == "planned" }
+        XCTAssertEqual(planli.count, 2)
+        XCTAssertTrue(planli.allSatisfy { $0.alanlar["channels"]?.haritaDegeri?["sms"] == .mantik(true) && $0.alanlar["channels"]?.haritaDegeri?["wa"] == .mantik(false) })
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

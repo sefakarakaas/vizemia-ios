@@ -112,6 +112,9 @@ struct BasvuruDetayi: View {
                 if ekip.yapabilir("app.edit") && ekip.yapabilir("app.sensitive") {
                     MusteriFormuKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
                 }
+                if veri.form != nil {
+                    BildirimTercihKarti(veri: veri, baglam: baglam(b)).belirme(6)
+                }
                 if ekip.yapabilir("eposta.send") || ekip.yapabilir("app.sensitive") {
                     MusteriyeMesajKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
                 }
