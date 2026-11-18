@@ -256,6 +256,7 @@ struct TalepDetayi: View {
     @State private var kaydedildi = false
     @State private var iptalSoruluyor = false
     @State private var iptalSebebi = Talep.iptalSebepleri[0]
+    @State private var rehberAcik = false
 
     var body: some View {
         if let t = veri.talep(yol) {
@@ -304,6 +305,17 @@ struct TalepDetayi: View {
         .ekranZemini()
         .navigationTitle(t.turAdi)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { rehberAcik = true } label: { Label("Görüşme rehberi", systemImage: "book") }
+            }
+        }
+        .sheet(isPresented: $rehberAcik) {
+            NavigationStack {
+                GorusmeRehberiEkrani(baslangicUlke: t.ham["country"]?.metinDegeri ?? "")
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Kapat") { rehberAcik = false } } }
+            }
+        }
         .onAppear {
             guard !hazir else { return }
             hazir = true

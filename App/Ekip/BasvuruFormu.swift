@@ -13,6 +13,7 @@ struct BasvuruFormuEkrani: View {
     @State private var ulkeSeciliyor = false
     @State private var sorun: String?
     @State private var basari = 0
+    @State private var rehberAcik = false
 
     init(kimlik: String?, talepYolu: String?, arsivId: String? = nil, grupKaynak: String? = nil) {
         _veri = State(initialValue: BasvuruFormuVerisi(kimlik: kimlik, talepYolu: talepYolu, arsivId: arsivId, grupKaynak: grupKaynak))
@@ -38,6 +39,19 @@ struct BasvuruFormuEkrani: View {
         .ekranZemini()
         .navigationTitle(veri.duzenleme ? "Başvuruyu düzenle" : "Yeni başvuru")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if !veri.duzenleme {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { rehberAcik = true } label: { Label("Görüşme rehberi", systemImage: "book") }
+                }
+            }
+        }
+        .sheet(isPresented: $rehberAcik) {
+            NavigationStack {
+                GorusmeRehberiEkrani(baslangicUlke: veri.ulke)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Kapat") { rehberAcik = false } } }
+            }
+        }
         .task { await veri.yukle(ekip, veri: ekipVerisi, ulkeler: Set(icerik.akis.tumUlkeler.map(\.slug))) }
         .sensoryFeedback(.success, trigger: basari)
     }

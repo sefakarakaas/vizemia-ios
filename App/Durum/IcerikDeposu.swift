@@ -18,6 +18,10 @@ final class IcerikDeposu {
     private let gomuluEvrak: EvrakKatalogu?
     private let gomuluRandevu: RandevuSecenekleri?
     private let gomuluForm: FormSemasi?
+    private let gomuluRehber: GorusmeRehberi?
+
+    /// Görüşme rehberinin varsayılanı (Ayarlar'dan kaydedilen settings/rehber üstüne yazar).
+    var rehber: GorusmeRehberi? { akis.rehber ?? gomuluRehber }
 
     /// Başvuru formunun şeması (ekip: yeni başvuru / düzenle).
     var formSemasi: FormSemasi? { akis.form ?? gomuluForm }
@@ -49,6 +53,7 @@ final class IcerikDeposu {
         gomuluEvrak = gomulu?.evrak
         gomuluRandevu = gomulu?.randevu
         gomuluForm = gomulu?.form
+        gomuluRehber = gomulu?.rehber
         let kayitli: Akis? = kaynak.kayitli(.uygulama)
         if let k = kayitli, k.surum == 1, !k.sayfalar.isEmpty, k.uretim >= (gomulu?.uretim ?? "") {
             akis = k

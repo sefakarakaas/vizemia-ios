@@ -245,6 +245,22 @@ final class EkipOturumu {
         return (cevap as? HTTPURLResponse)?.statusCode == 204
     }
 
+    // MARK: - Görüşme rehberi
+
+    /// settings/rehber (Ayarlar'dan kaydedilen); ilk açılışta bir kez okunur.
+    private(set) var rehberBelgesi: [String: FSDeger]?
+    private var rehberOkundu = false
+
+    func rehberYukle() async {
+        guard !rehberOkundu else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { rehberOkundu = true; return }
+        #endif
+        guard let f = try? await istemci() else { return }
+        rehberBelgesi = (try? await f.belge("settings/rehber")) ?? nil
+        rehberOkundu = true
+    }
+
     // MARK: - WhatsApp teyidi ve hazır mesajlar
 
     /// Cevabı beklenen WhatsApp açılışı (panel: wa-teyit.js). Uygulama WhatsApp'ın

@@ -135,3 +135,35 @@ final class WaSablonuTests: XCTestCase {
         XCTAssertEqual(alanlar["templates"]?.diziDegeri?.first?.haritaDegeri?["id"]?.metinDegeri, "ulasamadik")
     }
 }
+
+final class GorusmeRehberiTests: XCTestCase {
+    func testVarsayilanVeAyar() throws {
+        let url = try XCTUnwrap(Bundle.module.url(forResource: "uygulama", withExtension: "json"))
+        let akis = try JSONDecoder().decode(Akis.self, from: Data(contentsOf: url))
+        let r = try XCTUnwrap(akis.rehber)
+        XCTAssertEqual(r.kritikSoru.soru, "Davetiye gelecek mi?")
+        XCTAssertNotNil(r.kategori(r.kritikSoru.hayir))
+        XCTAssertEqual(r.ulkeAlanlari.first?.key, "merkez")
+        XCTAssertFalse(r.ulkeler.isEmpty)
+
+        let a = r.ayarla([
+            "ilkSorular": .dizi([.metin(" Ad Soyad "), .metin("")]),
+            "kritikSoru": .harita(["soru": .metin(""), "evet": .metin("Aile Ziyareti")]),
+            "kategoriler": .dizi([.harita(["baslik": .metin("Öğrenci"), "metin": .metin("- a\n- **b** c\nd")]), .harita(["baslik": .metin("")])]),
+            "ulkeler": .harita(["italya": .harita(["merkez": .metin("iDATA"), "x": .metin("y")]), "KÖTÜ": .harita([:])]),
+        ])
+        XCTAssertEqual(a.ilkSorular, ["Ad Soyad"])
+        XCTAssertEqual(a.kritikSoru.soru, r.kritikSoru.soru)
+        XCTAssertEqual(a.kritikSoru.evet, "Aile Ziyareti")
+        XCTAssertEqual(a.kategoriler.map(\.baslik), ["Öğrenci"])
+        XCTAssertEqual(a.bolumler, r.bolumler)
+        XCTAssertEqual(Array(a.ulkeler.keys), ["italya"])
+        XCTAssertEqual(a.ulkeler["italya"]?["merkez"], "iDATA")
+        XCTAssertNil(a.ulkeler["italya"]?["x"])
+        XCTAssertEqual(GorusmeRehberi.bloklar(a.kategoriler[0].metin), [
+            .liste([[.init(metin: "a", kalin: false)], [.init(metin: "b", kalin: true), .init(metin: " c", kalin: false)]]),
+            .paragraf([.init(metin: "d", kalin: false)]),
+        ])
+        XCTAssertEqual(GorusmeRehberi.konusma("Temsilci: Merhaba\nsade").map(\.kim), ["Temsilci", ""])
+    }
+}
