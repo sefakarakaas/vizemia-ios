@@ -112,6 +112,23 @@ struct BasvuruDetayi: View {
                 if ekip.yapabilir("app.edit") && ekip.yapabilir("app.sensitive") {
                     MusteriFormuKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
                 }
+                if ekip.yapabilir("app.sensitive") && veri.form != nil {
+                    NavigationLink(value: EkipRota.mektup(b.kimlik)) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "signature").font(.title3).foregroundStyle(Tema.turkuaz)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("İyi niyet mektubu").font(.headline).foregroundStyle(Tema.lacivert)
+                                Text("Bilgiler, cümle kalıpları, yapay zekâ prompt'u, PDF (Türkçe + İngilizce)")
+                                    .font(.caption).foregroundStyle(Tema.govde)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Tema.silik)
+                        }
+                        .kart()
+                    }
+                    .buttonStyle(.plain)
+                    .belirme(6)
+                }
                 if veri.form != nil {
                     BildirimTercihKarti(veri: veri, baglam: baglam(b)).belirme(6)
                 }
@@ -132,7 +149,7 @@ struct BasvuruDetayi: View {
                     .belirme(10)
                 }
                 gecmisKarti.belirme(10)
-                Text("İyi niyet mektubu ve konsolosluk formu (PDF / portal) şimdilik panelden yapılır.")
+                Text("Konsolosluk formu (PDF / portal) şimdilik panelden yapılır.")
                     .font(.caption)
                     .foregroundStyle(Tema.silik)
                     .padding(.horizontal, 4)

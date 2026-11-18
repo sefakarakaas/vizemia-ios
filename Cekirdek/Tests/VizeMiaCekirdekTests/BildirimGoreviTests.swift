@@ -167,3 +167,102 @@ final class GorusmeRehberiTests: XCTestCase {
         XCTAssertEqual(GorusmeRehberi.konusma("Temsilci: Merhaba\nsade").map(\.kim), ["Temsilci", ""])
     }
 }
+
+final class MektupTests: XCTestCase {
+    var gonca: MektupBilgileri {
+        var b = MektupBilgileri()
+        b.adSoyad = "Gonca Akkuş Kündem"; b.pasaportNo = "U33013536"
+        b.hitapTr = ["İSVEÇ BÜYÜKELÇİLİĞİ", "VİZE DEPARTMANI", "ANKARA"]; b.hitapEn = ["EMBASSY OF SWEDEN", "VISA DEPARTMENT", "ANKARA"]
+        b.tarih = "2026-10-05"; b.giris = "2027-03-05"; b.cikis = "2027-03-13"; b.amac = "aile ziyareti"; b.vizeTuru = "uzun-cok"
+        b.eslikEdenler = [.init(ad: "Sadık Fırat Kündem", yakinlik: "eşim", pasaport: "U39894525")]
+        b.davetEden = "Christin Maria Dahlgren"; b.davetYakinlik = "eşimin dayısının eşi"
+        b.oncekiVize = "Daha önce İsveç için Schengen vizesi aldım."; b.meslek = "İngilizce öğretmeni"
+        b.isyeri = "Ata Anaokulu Müdürlüğü Çocuk Kulübü"; b.masraf = "Tüm masrafları kendim karşılayacağım."
+        return b
+    }
+
+    func veri() throws -> MektupVerisi {
+        let a: Akis = try XCTUnwrap(IcerikKaynagi.gomulu(.uygulama))
+        return try XCTUnwrap(a.mektup)
+    }
+
+    func testPromptVeEksikler() throws {
+        let v = try veri()
+        let c = try XCTUnwrap(v.cumleler.first { $0.id == "coklu-90-180" }).metin
+        let p = Mektup.prompt(gonca, ulkeAdi: "İsveç", not: "Eşinin dayısının ailesiyle yakın ilişki.", cumleler: [c], ayar: v.ayar, vizeTurleri: v.vizeTurleri)
+        for parca in ["Gonca Akkuş Kündem", "U33013536", "U39894525", "Sadık Fırat Kündem", "Christin Maria Dahlgren", "eşimin dayısının eşi",
+                      "05 Mart 2027 – 13 Mart 2027", "05 March 2027", "İsveç", "Uzun süreli ve çok girişli", "180 günde 90 gün",
+                      "Türkiye Cumhuriyeti", "Eşinin dayısının", "tam 8 paragraf", "40–50 kelime", "[TR]", "[EN]"] {
+            XCTAssertTrue(p.contains(parca), parca)
+        }
+        XCTAssertEqual(Mektup.eksikler(gonca), [])
+        var b = MektupBilgileri(); b.adSoyad = "Ali Veli"
+        XCTAssertFalse(Mektup.prompt(b, ulkeAdi: "Fransa", not: "", cumleler: [], ayar: v.ayar, vizeTurleri: v.vizeTurleri).contains("Pasaport numarası:"))
+        XCTAssertTrue(Mektup.eksikler(b).contains("Pasaport numarası"))
+    }
+
+    func testDoldurma() throws {
+        let v = try veri()
+        let form: [String: FSDeger] = ["firstName": .metin("GONCA"), "lastName": .metin("AKKUŞ KÜNDEM"), "passportNo": .metin("u33013536"),
+                                       "entryDate": .metin("2027-03-05"), "exitDate": .metin("2027-03-13"), "travelPurpose": .metin("Aile_Arkadasi"),
+                                       "entries": .metin("M"), "occupation": .metin("İNGİLİZCE ÖĞRETMENİ"), "costCoveredBy": .metin("Kendim"),
+                                       "hostName": .metin("CHRISTIN MARIA DAHLGREN")]
+        let b = Mektup.doldur(form: form, ulke: "isvec", kayit: nil, veri: v, bugun: "2026-10-05")
+        XCTAssertEqual(b.adSoyad, "Gonca Akkuş Kündem")
+        XCTAssertEqual(b.pasaportNo, "U33013536")
+        XCTAssertEqual(b.amac, "aile / arkadaş ziyareti")
+        XCTAssertEqual(b.vizeTuru, "cok")
+        XCTAssertEqual(b.davetEden, "Christin Maria Dahlgren")
+        XCTAssertEqual(b.meslek, "İngilizce Öğretmeni")
+        XCTAssertEqual(b.hitapTr, ["İSVEÇ BÜYÜKELÇİLİĞİ", "VİZE DEPARTMANI", "ANKARA"])
+        XCTAssertEqual(b.hitapEn, ["EMBASSY OF SWEDEN", "VISA DEPARTMENT", "ANKARA"])
+        var k = MektupBilgileri(); k.pasaportNo = "ELLE123"
+        XCTAssertEqual(Mektup.doldur(form: form, ulke: "isvec", kayit: k, veri: v, bugun: "2026-10-05").pasaportNo, "ELLE123")
+        let geri = MektupBilgileri(alanlar: b.alanlar)
+        XCTAssertEqual(geri, b)
+    }
+
+    func testCevapOku() {
+        let tr = (1...8).map { "Türkçe paragraf \($0) için örnek metin, ülkeme dönüşüm kesindir." }
+        let en = (1...8).map { "English paragraph \($0) sample text, I will return to Türkiye." }
+        let temiz = Mektup.cevapOku("[TR]\n\(tr.joined(separator: "\n\n"))\n[EN]\n\(en.joined(separator: "\n\n"))", adSoyad: "", paragraf: 8)
+        XCTAssertEqual(temiz.tr, tr); XCTAssertEqual(temiz.en, en); XCTAssertEqual(temiz.uyarilar, [])
+        let kirli = (["İşte dilekçenin akıcı ve profesyonel hali:", "", "**[TR]**", "Sayın Yetkili,", ""]
+            + tr.enumerated().map { "\($0.offset + 1). **\($0.element)**\n" }
+            + ["Saygılarımla,", "", "Gonca Akkuş Kündem", "", "## [EN]", "Dear Sir/Madam,", ""]
+            + en.enumerated().map { "Paragraph \($0.offset + 1): \($0.element)\n" }
+            + ["Yours faithfully,", "Gonca Akkuş Kündem", "", "Umarım işinize yarar!"]).joined(separator: "\n")
+        let r = Mektup.cevapOku(kirli, adSoyad: "Gonca Akkuş Kündem", paragraf: 8)
+        XCTAssertEqual(r.tr, tr); XCTAssertEqual(r.en, en)
+        let tek = Mektup.cevapOku(tr.joined(separator: "\n\n"), adSoyad: "", paragraf: 8)
+        XCTAssertEqual(tek.tr.count, 8); XCTAssertEqual(tek.en.count, 0)
+        XCTAssertTrue(tek.uyarilar.contains { $0.contains("işaret") })
+        let az = Mektup.cevapOku("[TR]\n\(tr.prefix(6).joined(separator: "\n\n"))\n[EN]\n\(en.joined(separator: "\n\n"))", adSoyad: "", paragraf: 8)
+        XCTAssertTrue(az.uyarilar.contains("Türkçe 6 paragraf (beklenen 8)."))
+    }
+
+    func testBicimVeYerlesim() {
+        XCTAssertEqual(Mektup.dosyaAdi("Gonca Akkuş Kündem"), "GONCA AKKUŞ KÜNDEM DİLEKÇE.pdf")
+        XCTAssertEqual(Mektup.dosyaAdi("ismail ışık"), "İSMAİL IŞIK DİLEKÇE.pdf")
+        XCTAssertEqual(Mektup.tarihNoktali("2026-10-05"), "05.10.2026")
+        XCTAssertEqual(Mektup.tarihEn("2026-10-05"), "05 October 2026")
+        XCTAssertEqual(Mektup.ozelAd("İSMAİL IŞIK"), "İsmail Işık")
+        XCTAssertEqual(Mektup.kelimeSay("  bir iki   üç "), 3)
+        let olc: (String) -> Double = { Double($0.count) * 5 }
+        let genislik = Mektup.Olcu.genislik - Mektup.Olcu.sol - Mektup.Olcu.sag
+        let satirlar = Mektup.satirKir(String(repeating: "kelime ", count: 40), olc: olc, genislik: genislik)
+        XCTAssertTrue(satirlar.allSatisfy { olc($0) <= genislik })
+        let uzun = Array(repeating: Array(repeating: "kelime", count: 60).joined(separator: " "), count: 10)
+        let s = Mektup.yerlesim(hitap: ["İSVEÇ BÜYÜKELÇİLİĞİ", "VİZE DEPARTMANI", "ANKARA"], tarih: "05.10.2026", selam: "Sayın Yetkili,",
+                                paragraflar: uzun, kapanis: "Saygılarımla,", imza: "Gonca Akkuş Kündem", olc: olc)
+        XCTAssertEqual(s[0].prefix(3).map { [$0.x, $0.y] }, [[71, 761], [71, 738], [71, 716]])
+        let t = s[0].first { $0.metin == "05.10.2026" }!
+        XCTAssertEqual(t.y, 693)
+        XCTAssertEqual(t.x + olc("05.10.2026"), Mektup.Olcu.genislik - Mektup.Olcu.sag, accuracy: 0.01)
+        XCTAssertEqual(s[0][5].y, 648)
+        XCTAssertGreaterThanOrEqual(s.count, 2)
+        XCTAssertEqual(s[1][0].y, 761)
+        XCTAssertTrue(s.allSatisfy { $0.allSatisfy { $0.y >= 72 } })
+        XCTAssertEqual(s.last?.last?.metin, "Gonca Akkuş Kündem")
+    }
+}

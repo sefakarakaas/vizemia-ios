@@ -19,6 +19,10 @@ final class IcerikDeposu {
     private let gomuluRandevu: RandevuSecenekleri?
     private let gomuluForm: FormSemasi?
     private let gomuluRehber: GorusmeRehberi?
+    private let gomuluMektup: MektupVerisi?
+
+    /// İyi niyet mektubunun hazır verisi (settings/mektup üstüne yazar).
+    var mektup: MektupVerisi? { akis.mektup ?? gomuluMektup }
 
     /// Görüşme rehberinin varsayılanı (Ayarlar'dan kaydedilen settings/rehber üstüne yazar).
     var rehber: GorusmeRehberi? { akis.rehber ?? gomuluRehber }
@@ -54,6 +58,7 @@ final class IcerikDeposu {
         gomuluRandevu = gomulu?.randevu
         gomuluForm = gomulu?.form
         gomuluRehber = gomulu?.rehber
+        gomuluMektup = gomulu?.mektup
         let kayitli: Akis? = kaynak.kayitli(.uygulama)
         if let k = kayitli, k.surum == 1, !k.sayfalar.isEmpty, k.uretim >= (gomulu?.uretim ?? "") {
             akis = k

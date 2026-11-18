@@ -17,6 +17,7 @@ enum EkipRota: Hashable {
     case arsiv
     case arsivdenBasvuru(String)    // arşiv kaydının kimliği: yeni başvuru formu onunla dolu
     case rehber                     // görüşme rehberi
+    case mektup(String)             // başvurunun iyi niyet mektubu
     case grubaEkle(String)          // ilk kişinin başvurusu: yeni başvuru ortak yolculuk bilgileriyle dolu
     case kasa
     case bildirimler
@@ -99,6 +100,7 @@ struct EkipKok: View {
                     case .arsiv: ArsivEkrani()
                     case .arsivdenBasvuru(let id): BasvuruFormuEkrani(kimlik: nil, talepYolu: nil, arsivId: id)
                     case .rehber: GorusmeRehberiEkrani()
+                    case .mektup(let id): MektupEkrani(basvuruId: id)
                     case .grubaEkle(let id): BasvuruFormuEkrani(kimlik: nil, talepYolu: nil, grupKaynak: id)
                     case .kasa: KasaEkrani()
                     case .bildirimler: BildirimlerEkrani()

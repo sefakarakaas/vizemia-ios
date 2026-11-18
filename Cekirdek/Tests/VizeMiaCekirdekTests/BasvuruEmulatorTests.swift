@@ -1085,6 +1085,30 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertTrue(planli.allSatisfy { $0.alanlar["channels"]?.haritaDegeri?["sms"] == .mantik(true) && $0.alanlar["channels"]?.haritaDegeri?["wa"] == .mantik(false) })
     }
 
+    func testMektupKaydi() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("mk\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("mk\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["app.sensitive"]).map { .metin($0) }),
+        ])])
+        let appId = "mk\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: ["firstName": .metin("AYSE")])
+        let o = try await e.kimlik.giris(kullaniciAdi: "mk\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        var b = MektupBilgileri(); b.adSoyad = "Ayşe Kaya"; b.eslikEdenler = [.init(ad: "Ali Kaya", yakinlik: "eşim", pasaport: "U1")]
+        try await ben.isle(Mektup.kaydet(appId, bilgiler: b, not: "not", secilenler: ["amac-turistik"], tr: ["a", "b"], en: ["c"], pdf: true, calisan: c))
+        try await ben.isle(Mektup.kaydet(appId, bilgiler: b, not: "not 2", secilenler: [], tr: ["a"], en: [], calisan: c))
+        let _m = try await ben.belge("applications/\(appId)/private/mektup")
+        let m = try XCTUnwrap(_m)
+        XCTAssertEqual(MektupBilgileri(alanlar: try XCTUnwrap(m["bilgiler"]?.haritaDegeri)), b)
+        XCTAssertEqual(m["not"]?.metinDegeri, "not 2")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")
