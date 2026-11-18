@@ -23,7 +23,10 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 - Pasaport kontrolü: fotoğraf telefonda Vision ile okunur (`MrzOkuyucu`), çekirdekte `Mrz` (mrz.js karşılığı) ve `PasaportKontrolu`; yalnız sonuç yazılır.
 - İletiler: `BildirimGorevi` / `BildirimMetni` (WhatsApp görevleri, şablon doldurma), `Eposta.swift`, `FirmaMaili.swift` (cevap mailinin HTML'i sitenin JS çıktısıyla testte karşılaştırılır: `Tests/…/Ornekler`).
 - Site içeriği: `SiteIcerigi.swift` (süreç adımları, vitrin slaytı, `SiteYayini` — kayıttan sonra yayın işini başlatır), `Icerik.swift` (blog/SSS), `FotoHavuzu.swift` (otomatik arka plan seçimi sitenin foto-havuzu.js'iyle bire bir), `Sosyal.swift`.
-- Yönetim: `Kullanicilar.swift` (çalışanlar, işlem kayıtları), `Ayarlar.swift`, `Armut.swift` (Armut ve elle talep).
+- Yönetim: `Kullanicilar.swift` (çalışanlar, işlem kayıtları), `Ayarlar.swift`, `StatuEvrakAyari.swift` (statüler, evrak listesi), `Armut.swift` (Armut ve elle talep).
+- Başvuru ayrıntısındaki kartlar: `MusteriMesaji.swift` (WhatsApp/SMS/e-posta; WhatsApp teyidi `EkipOturumu.bekleyenWa`, kapatılamayan soru kökte), `MusteriFormu.swift` (müşteri formu, `FormKosulu` = form-kosul.js, `FormGonderimKurali`), `Grup.swift`, `BasvuruSilme.swift` (saklama, silme + müşteri arşivi tek yazımda), `BildirimTercihi.swift`, `Mektup.swift` (iyi niyet mektubu; PDF uygulamada `MektupPdf`, yazı tipi `App/Kaynaklar/Fontlar/Carlito-Bold.ttf`, OFL).
+- Toplu e-posta: `TopluEposta.swift`. Görüşme rehberi: `GorusmeRehberi.swift`.
+- uygulama.json'a ekip için eklenen alanlar: `rehber` (görüşme rehberi varsayılanı), `mektup` (hitaplar, cümle kalıpları); Firestore'daki ayar (settings/rehber, settings/mektup) üstüne yazar. Gömülü kopya (`Cekirdek/.../Kaynaklar/uygulama.json`) yeni alan eklenince elle güncellenir.
 - Düzenlemede oluşturma alanları (createdAt…) okunup geri yazılmaz: zaman hassasiyeti kaybolur, kural "değişmedi" denetiminde reddeder. Yalnız değişen alanlar (`.guncelle`, `.derin`, `.birlestir`).
 - Ekran testinde örnek veri: `-ornek-ekip` (yalnız geliştirme derlemesi; ağa dokunmaz).
 
