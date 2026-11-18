@@ -60,3 +60,42 @@ final class EkipIcerikTests: XCTestCase {
         XCTAssertEqual(Icerik.slug("---"), "")
     }
 }
+
+final class FotoHavuzuTests: XCTestCase {
+    func testOdak() {
+        XCTAssertEqual(FotoHavuzu.odakYaz(33.4, 66.5), "33% 67%")
+        XCTAssertEqual(FotoHavuzu.odakYaz(-5, 140), "0% 100%")
+        XCTAssertTrue(FotoHavuzu.odakGecerli("0% 100%"))
+        XCTAssertFalse(FotoHavuzu.odakGecerli("101% 5%"))
+        XCTAssertFalse(FotoHavuzu.odakGecerli("50%  50%"))
+        XCTAssertEqual(FotoHavuzu.odakOku("25% 75%").x, 0.25)
+        XCTAssertEqual(FotoHavuzu.hazirlar.filter(\.oto).count, 36)
+        let e = FotoHavuzu.Eklenen(kimlik: "x", alanlar: ["gorsel": .metin(FotoHavuzu.veriAdresi(jpeg: Data([1, 2, 3])))])
+        XCTAssertEqual(e.bayt, Data([1, 2, 3]))
+    }
+}
+
+/// Vitrin arka planı: beklenen sonuçlar sitenin foto-havuzu.js'inden üretildi.
+final class VitrinArkaPlanTests: XCTestCase {
+    func testSiteyleAyni() {
+        var havuz = FotoHavuzu.kur([
+            FotoHavuzu.Eklenen(kimlik: "abc123", alanlar: ["gorsel": .metin("E:abc123"), "ulke": .metin("almanya"), "odak": .metin("30% 40%")]),
+            FotoHavuzu.Eklenen(kimlik: "genelx", alanlar: ["gorsel": .metin("E:genelx"), "ulke": .metin("")]),
+        ])
+        // Testte yollar JS'teki gibi kısaltılır.
+        for i in havuz.indices where havuz[i].hazir { havuz[i].yol = "H:\(havuz[i].id)" }
+        let s: [FotoHavuzu.SlaytGirdisi] = [
+            .init(id: "Kx9aQ2", sira: 1), .init(id: "icerik-Zz81", ulke: "almanya", sira: 2), .init(id: "p0", ulke: "almanya", odak: "10% 90%", sira: 3),
+            .init(id: "çğü-İ", ulke: "japonya", sira: 4), .init(id: "v1", havuzFoto: "varsayilan-randevu", sira: 5), .init(id: "g1", gorsel: "data:x", sira: 6),
+            .init(id: "aa", ulke: "fransa", sira: 7), .init(id: "ab", ulke: "fransa", sira: 8),
+        ]
+        let r = FotoHavuzu.vitrinFotolari(s, havuz)
+        XCTAssertEqual(r.map(\.gorsel), ["H:genel-gol", "E:abc123", "H:almanya-brandenburg", "H:genel-harita", "H:varsayilan-randevu", "data:x",
+                                         "H:fransa-kopru", "H:fransa-eyfel"])
+        XCTAssertEqual(r.map(\.odak), ["50% 50%", "30% 40%", "10% 90%", "50% 50%", "50% 50%", "50% 50%", "50% 50%", "60% 50%"])
+        XCTAssertEqual(FotoHavuzu.sonrakiFoto(ulke: "fransa", havuz, simdiki: "fransa-kopru"), "fransa-eyfel-park")
+        XCTAssertEqual(FotoHavuzu.sonrakiFoto(ulke: "", havuz, simdiki: "u-genelx"), "genel-ucak-kanadi")
+        XCTAssertTrue(FotoHavuzu.ulkeFotosuVar("almanya", havuz))
+        XCTAssertFalse(FotoHavuzu.ulkeFotosuVar("japonya", havuz))
+    }
+}

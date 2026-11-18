@@ -28,6 +28,8 @@ final class EkipVerisi {
     let basvurular = BasvuruListesiVerisi()
     /// Kasa raporu ve rutin ödemeler (Kasa ekranı ile rutin ödemeler ekranı aynı veriyi kullanır).
     let kasa = KasaVerisi()
+    /// Vitrin slaytları ve fotoğraf havuzu.
+    let vitrin = VitrinVerisi()
     /// Bir ekrandan ötekine taşınan bilgi (ör. kaydedilen formdan sonra ayrıntıda gösterilir).
     var sonMesaj: String?
 

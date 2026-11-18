@@ -746,4 +746,54 @@ final class BasvuruEmulatorTests: XCTestCase {
         let silinen = try await owner.belge("content/\(i.id)")
         XCTAssertNil(silinen)
     }
+
+    /// Vitrin ve fotoğraf havuzu: slayt ekle / düzenle / sil, yüklenen görseli havuza ekle, görünen alanı değiştir.
+    func testVitrinVeHavuz() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("vitrin\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("vitrin\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "vitrin\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+
+        var s = VitrinSlayti()
+        s.baslik = "Noel'i Almanya'da geçirmek ister misin?"
+        s.ust = "Almanya · Aralık"
+        s.ulke = "almanya"
+        s.durum = "yayinda"
+        s.bitis = Tr.gunEkle(Tr.bugun(), 30)
+        XCTAssertEqual(s.hatalar, [])
+        try await ben.isle(VitrinIslemi.kaydet(s, yayinlayabilir: true, calisan: c))
+        let _s1 = try await ben.belge("vitrin/\(s.id)")
+        var k = VitrinSlayti(kimlik: s.id, alanlar: try XCTUnwrap(_s1))
+        XCTAssertEqual(k.durumYazisi().tur, "yayinda")
+        k.havuzFoto = "almanya-rothenburg"
+        k.odak = "20% 80%"
+        k.link = ""
+        try await ben.isle(VitrinIslemi.kaydet(k, yayinlayabilir: true, calisan: c))
+
+        // Kendi görseliyle yeni slayt; görsel havuza da eklenir.
+        var g = VitrinSlayti()
+        g.baslik = "Yaz kampanyası"
+        g.gorsel = FotoHavuzu.veriAdresi(jpeg: Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]))
+        try await ben.isle(VitrinIslemi.kaydet(g, yayinlayabilir: false, havuzaEkle: true, calisan: c))
+        let _g = try await ben.belge("vitrin/\(g.id)")
+        XCTAssertEqual(VitrinSlayti(kimlik: g.id, alanlar: try XCTUnwrap(_g)).durum, "taslak", "yetki yoksa taslak")
+        let havuz = try await ben.sorgu(koleksiyon: "fotoHavuzu", sinir: 10).map { FotoHavuzu.Eklenen(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        let eklenen = try XCTUnwrap(havuz.first { $0.gorsel == g.gorsel })
+        XCTAssertEqual(eklenen.ad, "Yaz kampanyası")
+        try await ben.isle(FotoHavuzu.odakGuncelle(eklenen, odak: "70% 30%", calisan: c))
+        let _h = try await ben.belge("fotoHavuzu/\(eklenen.id)")
+        XCTAssertEqual(FotoHavuzu.Eklenen(kimlik: eklenen.id, alanlar: try XCTUnwrap(_h)).odak, "70% 30%")
+        try await ben.isle(FotoHavuzu.sil(eklenen, calisan: c))
+        try await ben.isle(VitrinIslemi.sil(k, calisan: c))
+        let silinen = try await owner.belge("vitrin/\(k.id)")
+        XCTAssertNil(silinen)
+    }
 }

@@ -38,8 +38,8 @@ struct EkipBolumu: Identifiable {
         EkipBolumu(id: "sosyal", ad: "Sosyal medya", simge: "megaphone.fill", ogeler: [
             Oge(id: "icerik", ad: "Blog ve SSS", simge: "doc.text.fill", izin: "content.draft|content.publish", yonetici: false, rota: .icerikler),
             Oge(id: "sosyal", ad: "Sosyal medya", simge: "camera.fill", izin: "social.view", yonetici: false, rota: nil),
-            Oge(id: "vitrin", ad: "Vitrin (ana sayfa)", simge: "photo.on.rectangle.angled", izin: "vitrin.edit|vitrin.publish", yonetici: false, rota: nil),
-            Oge(id: "havuz", ad: "Fotoğraf havuzu", simge: "photo.stack.fill", izin: "havuz.manage|vitrin.edit|vitrin.publish", yonetici: false, rota: nil),
+            Oge(id: "vitrin", ad: "Vitrin (ana sayfa)", simge: "photo.on.rectangle.angled", izin: "vitrin.edit|vitrin.publish", yonetici: false, rota: .vitrin),
+            Oge(id: "havuz", ad: "Fotoğraf havuzu", simge: "photo.stack.fill", izin: "havuz.manage|vitrin.edit|vitrin.publish", yonetici: false, rota: .havuz),
         ]),
         EkipBolumu(id: "takvim", ad: "Takvim", simge: "calendar", ogeler: [
             Oge(id: "takvim", ad: "Takvim", simge: "calendar", izin: "app.view|lead.view", yonetici: false, rota: .takvim),

@@ -92,3 +92,112 @@ public struct SurecAdimlari: Equatable {
         ]
     }
 }
+
+/// Ana sayfadaki kayan slayt (vitrin/{id}; panel: pages/vitrin.js).
+public struct VitrinSlayti: Equatable, Identifiable {
+    /// "Düğme nereye gitsin?" hazır seçenekleri.
+    public static let baglantilar: [(yol: String, ad: String)] = [
+        ("/basvuru", "Başvuru sayfası (Sizi Arayalım)"), ("#randevu", "Arama formu (ana sayfa)"), ("#ulkeler", "Ülke seçimi (ana sayfa)"),
+        ("#rehber", "Randevu günü rehberi (ana sayfa)"), ("#sss", "Sıkça sorulan sorular (ana sayfa)"), ("/blog", "Blog"), ("/takip", "Başvuru takibi"),
+    ]
+
+    public var id: String
+    public var ust = ""
+    public var baslik = ""
+    public var metin = ""
+    public var dugme = "Başvur"
+    public var link = "/basvuru"
+    public var gorsel = ""
+    public var havuzFoto = ""
+    public var odak = ""
+    public var ulke = ""
+    public var baslangic = ""
+    public var bitis = ""
+    public var sira = 10
+    public var durum = "taslak"
+    public var guncelleme: Date?
+    public var kayitli = false
+
+    public init(id: String = FirestoreIstemci.yeniKimlik()) { self.id = id }
+
+    public init(kimlik: String, alanlar a: [String: FSDeger]) {
+        func m(_ k: String) -> String { a[k]?.metinDegeri ?? "" }
+        id = kimlik
+        ust = m("ust"); baslik = m("baslik"); metin = m("metin"); dugme = m("dugme"); link = m("link")
+        gorsel = m("gorsel"); havuzFoto = m("havuzFoto"); odak = m("odak"); ulke = m("ulke")
+        baslangic = m("baslangic"); bitis = m("bitis"); sira = a["sira"]?.tamDegeri ?? 0; durum = m("durum")
+        guncelleme = a["updatedAt"]?.zamanDegeri
+        kayitli = true
+    }
+
+    public var icerikten: Bool { id.hasPrefix("icerik-") }
+    public var girdi: FotoHavuzu.SlaytGirdisi {
+        FotoHavuzu.SlaytGirdisi(id: id, ulke: ulke, gorsel: gorsel, havuzFoto: havuzFoto, odak: odak, sira: sira)
+    }
+
+    /// Listede gösterilen durum: taslak / süresi doldu / başlayacak / yayında.
+    public func durumYazisi(bugun: String = Tr.bugun()) -> (metin: String, tur: String) {
+        if durum != "yayinda" { return ("Taslak", "taslak") }
+        if !bitis.isEmpty && bugun > bitis { return ("Süresi doldu", "bitti") }
+        if !baslangic.isEmpty && bugun < baslangic { return ("\(BildirimMetni.trTarih(baslangic, gun: false)) tarihinde başlayacak", "bekliyor") }
+        return ("Yayında", "yayinda")
+    }
+
+    /// Sitede şu an yayında mı (komşu slaytlar için; panel: komsulariGetir).
+    public func sitede(bugun: String = Tr.bugun()) -> Bool { durum == "yayinda" && !(!bitis.isEmpty && bitis < bugun) }
+
+    public var hatalar: [String] {
+        var h: [String] = []
+        if baslik.kirpik.count < 2 { h.append("Başlık boş olamaz.") }
+        let l = link.kirpik
+        if !l.isEmpty && !l.eslesir("^(/[^\\s]*|#[A-Za-z0-9_-]*|https://[^\\s]+)$") { h.append("Adres / ile ya da https:// ile başlamalı.") }
+        if !baslangic.isEmpty && !bitis.isEmpty && bitis < baslangic { h.append("Bitiş tarihi başlangıçtan önce olamaz.") }
+        if gorsel.count > FotoHavuzu.gorselSiniri { h.append("Görsel çok büyük; daha küçük bir görsel seçin.") }
+        return h
+    }
+}
+
+public enum VitrinIslemi {
+    static func kayit(_ eylem: String, _ hedef: String, _ ayrinti: String, _ c: Calisan) -> FirestoreIstemci.Yazim {
+        .olustur(yol: "audit/\(FirestoreIstemci.yeniKimlik())",
+                 alanlar: IslemKaydi.alanlar(eylem: eylem, hedef: hedef, ayrinti: String(ayrinti.prefix(500)), calisan: c), zaman: ["at"])
+    }
+
+    /// Slaytı yazar (yayınlama yetkisi yoksa taslak). Yeni slaytta oluşturma alanları şimdi;
+    /// düzenlemede yalnız içerik alanları (oluşturma alanları olduğu gibi kalır).
+    public static func kaydet(_ s: VitrinSlayti, yayinlayabilir: Bool, havuzaEkle: Bool = false, calisan c: Calisan) -> [FirestoreIstemci.Yazim] {
+        let durum = yayinlayabilir ? s.durum : "taslak"
+        var a: [String: FSDeger] = [:]
+        a["ust"] = .metin(String(s.ust.kirpik.prefix(40)))
+        a["baslik"] = .metin(String(s.baslik.kirpik.prefix(80)))
+        a["metin"] = .metin(String(s.metin.kirpik.prefix(200)))
+        a["dugme"] = .metin(String(s.dugme.kirpik.prefix(30)))
+        a["link"] = .metin(s.link.kirpik)
+        a["gorsel"] = .metin(s.gorsel)
+        a["havuzFoto"] = .metin(s.gorsel.isEmpty ? s.havuzFoto : "")
+        a["odak"] = .metin(FotoHavuzu.odakGecerli(s.odak) ? s.odak : "")
+        a["ulke"] = .metin(s.ulke)
+        a["baslangic"] = s.baslangic.isEmpty ? .bos : .metin(s.baslangic)
+        a["bitis"] = s.bitis.isEmpty ? .bos : .metin(s.bitis)
+        a["sira"] = .tam(min(999, max(0, s.sira)))
+        a["durum"] = .metin(durum)
+        a["updatedBy"] = .metin(c.uid)
+        var y: [FirestoreIstemci.Yazim]
+        if s.kayitli {
+            y = [.guncelle(yol: "vitrin/\(s.id)", alanlar: a, zaman: ["updatedAt"])]
+        } else {
+            a["createdBy"] = .metin(c.uid)
+            y = [.yaz(yol: "vitrin/\(s.id)", alanlar: a, zaman: ["createdAt", "updatedAt"])]
+        }
+        y.append(kayit(s.kayitli ? "vitrin.update" : "vitrin.create", s.id, "\(s.baslik.kirpik) (\(durum))", c))
+        if havuzaEkle && !s.gorsel.isEmpty {
+            y += FotoHavuzu.ekle(gorsel: s.gorsel, ulke: s.ulke, odak: FotoHavuzu.odakGecerli(s.odak) ? s.odak : FotoHavuzu.orta,
+                                 ad: s.baslik, calisan: c)
+        }
+        return y
+    }
+
+    public static func sil(_ s: VitrinSlayti, calisan c: Calisan) -> [FirestoreIstemci.Yazim] {
+        [.sil(yol: "vitrin/\(s.id)"), kayit("vitrin.delete", s.id, s.baslik, c)]
+    }
+}
