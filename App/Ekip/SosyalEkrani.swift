@@ -16,6 +16,7 @@ struct SosyalEkrani: View {
     @State private var bildiri: String?
     @State private var gorseller: [String: [String: UIImage]] = [:]
     @State private var istekAcik = false
+    @State private var yukleAcik = false
 
     /// Her kanaldan bekleyen ve son paylaşılan post sayısı sınırı (okuma kotası).
     static let sinir = 60
@@ -66,6 +67,20 @@ struct SosyalEkrani: View {
         .refreshable { paylasilanYuklendi = false; await yukle() }
         .onChange(of: paylasilan) { _, yeni in if yeni && !paylasilanYuklendi { Task { await paylasilanlariYukle() } } }
         .sheet(isPresented: $istekAcik) { PostIstekleriSayfasi() }
+        .toolbar {
+            if ekip.yapabilir("social.upload") {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { yukleAcik = true } label: { Label("Post yükle", systemImage: "square.and.arrow.up.on.square") }
+                }
+            }
+        }
+        .sheet(isPresented: $yukleAcik) {
+            PostYukleSayfasi { id in
+                bildiri = "Post yüklendi; Bekleyenler listesinde."
+                Task { await yukle() }
+                _ = id
+            }
+        }
     }
 
     private var kanalSecici: some View {

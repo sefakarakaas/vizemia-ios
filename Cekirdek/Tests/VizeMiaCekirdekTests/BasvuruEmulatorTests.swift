@@ -1145,6 +1145,45 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(TopluEposta.adBol("Mehmet Ali Yılmaz").ad, "Mehmet Ali")
     }
 
+    func testElleSosyalPost() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("sp\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("sp\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["social.view", "social.upload"]).map { .metin($0) }),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "sp\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let jpg = Data([0xff, 0xd8, 0xff, 0xe0, 0, 1, 2, 3])
+        XCTAssertEqual(ElleSosyalPost.gorselTuru(jpg), "image/jpeg")
+        XCTAssertNil(ElleSosyalPost.gorselTuru(Data([1, 2, 3])))
+        XCTAssertEqual(ElleSosyalPost.bosSira([1, 2, 10, 11]), 12)
+        let tarih = "2030-0\(Int(ek.prefix(1))! % 9 + 1)-1\(ek.suffix(1))"
+        guard case .failure(let h) = ElleSosyalPost.olustur(tarih: tarih, sira: 10, no: 5, tur: "haber", konu: "", kaynak: "", instagram: "x",
+                                                            x: "", whatsapp: "", gorseller: [.init(tur: "image/jpeg", bayt: jpg)], calisan: c) else { return XCTFail() }
+        XCTAssertEqual(h.mesaj, "Konu boş olamaz (panelde kartın başlığı olur).")
+        guard case .success(let r) = ElleSosyalPost.olustur(tarih: tarih, sira: 10, no: 5, tur: "haber", konu: "Almanya vize kolaylığı", kaynak: "Bakanlık",
+                                                            instagram: "Açıklama #vize", x: "X metni", whatsapp: "",
+                                                            gorseller: [.init(tur: "image/jpeg", bayt: jpg), .init(tur: "image/jpeg", bayt: jpg)], calisan: c) else { return XCTFail() }
+        XCTAssertEqual(r.id, "\(tarih)-10")
+        try await ben.isle(r.yazimlar)
+        let _p = try await ben.belge("posts/\(r.id)")
+        let p = try XCTUnwrap(_p)
+        XCTAssertEqual(p["dosya"]?.metinDegeri, "VizeMia-Post-005-\(tarih)-haber")
+        XCTAssertEqual(p["kanallar"]?.haritaDegeri?.keys.sorted(), ["instagram", "x"])
+        let g = try await ben.belge("posts/\(r.id)/gorseller/VizeMia-Post-005-\(tarih)-haber-2.jpg")
+        XCTAssertEqual(g?["veri"], .bayt(jpg))
+        guard case .success(let r2) = ElleSosyalPost.olustur(tarih: tarih, sira: 3, no: 6, tur: "haber", konu: "k", kaynak: "", instagram: "i",
+                                                             x: "", whatsapp: "", gorseller: [.init(tur: "image/jpeg", bayt: jpg)], calisan: c) else {
+            return // 10'dan küçük sıra çekirdekte de reddedilir
+        }
+        XCTFail("sıra 3 kabul edildi: \(r2.id)")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

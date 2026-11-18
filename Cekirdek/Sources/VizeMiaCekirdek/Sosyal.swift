@@ -208,3 +208,98 @@ public enum SosyalIslemi {
         [.guncelle(yol: "postIstekleri/\(i.id)", alanlar: ["durum": .metin("iptal"), "iptalEden": .metin(c.gorunenAd)], zaman: ["iptalAt"])]
     }
 }
+
+// MARK: - Elle post yükleme (panel: sosyal-liste.js → ellePost; social.upload)
+
+/// Çalışanın kendi görseli ve kanal metinleriyle eklediği post. Günlük görev 1–6.
+/// sıraları kullanır; elle postlar 10'dan başlar (kural da şart koşar). Post ve
+/// görselleri tek yazımda.
+public enum ElleSosyalPost {
+    public static let siraEnAz = 10, siraEnCok = 99
+    public static let gorselEnCok = 10
+    public static let gorselBaytEnCok = 900_000
+    public static let toplamBaytEnCok = 7_000_000
+    public static let kanalMetinEnCok = 5000, igMetinEnCok = 2200, konuEnCok = 200, kaynakEnCok = 500
+    public static let gorselUzantilari = ["image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"]
+
+    public struct Gorsel: Equatable {
+        public var tur: String
+        public var bayt: Data
+        public init(tur: String, bayt: Data) { self.tur = tur; self.bayt = bayt }
+    }
+
+    /// Baytlara bakarak görsel türü (gönderici de böyle denetler); tanınmazsa nil.
+    public static func gorselTuru(_ d: Data) -> String? {
+        let u = [UInt8](d.prefix(12))
+        if u.count >= 3 && u[0] == 0xff && u[1] == 0xd8 && u[2] == 0xff { return "image/jpeg" }
+        if u.count >= 8 && u.prefix(8) == [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] { return "image/png" }
+        if u.count >= 12 && String(bytes: u[0..<4], encoding: .ascii) == "RIFF" && String(bytes: u[8..<12], encoding: .ascii) == "WEBP" { return "image/webp" }
+        return nil
+    }
+
+    /// O günün dolu sıralarına göre ilk boş sıra (10–99); yer yoksa nil.
+    public static func bosSira(_ dolu: [Int]) -> Int? {
+        let d = Set(dolu)
+        return (siraEnAz...siraEnCok).first { !d.contains($0) }
+    }
+
+    /// "VizeMia-Post-NNN-TARİH-tür" (görevle aynı biçim).
+    public static func dosyaAdi(no: Int, tarih: String, tur: String) -> String {
+        "VizeMia-Post-\(String(format: "%03d", no))-\(tarih)-\(tur)"
+    }
+
+    static func kanal(_ metin: String, _ gorseller: [String] = []) -> FSDeger {
+        .harita(["metin": .metin(metin), "gorseller": .dizi(gorseller.map { .harita(["dosya": .metin($0)]) }),
+                 "durum": .metin("bekliyor"), "paylasildi_tarih": .bos, "paylasan": .bos])
+    }
+
+    /// Denetler ve yazımları kurar; hata metni ya da (kimlik, yazımlar).
+    public static func olustur(tarih: String, sira: Int?, no: Int, tur: String, konu: String, kaynak: String,
+                               instagram: String, x: String, whatsapp: String, gorseller: [Gorsel], calisan c: Calisan)
+        -> Result<(id: String, yazimlar: [FirestoreIstemci.Yazim]), PostHatasi> {
+        func hata(_ s: String) -> Result<(id: String, yazimlar: [FirestoreIstemci.Yazim]), PostHatasi> { .failure(PostHatasi(mesaj: s)) }
+        guard Tr.tarih(tarih) != nil else { return hata("Gün seçin.") }
+        guard SosyalPost.turler[tur] != nil else { return hata("Tür seçin.") }
+        guard let s = sira, (siraEnAz...siraEnCok).contains(s) else { return hata("Bu güne eklenecek yer kalmadı.") }
+        guard (0...999_999).contains(no) else { return hata("Post numarası hesaplanamadı.") }
+        let k = konu.kirpik, kay = kaynak.kirpik, ig = instagram.kirpik
+        guard !k.isEmpty else { return hata("Konu boş olamaz (panelde kartın başlığı olur).") }
+        guard k.count <= konuEnCok else { return hata("Konu en çok \(konuEnCok) karakter olabilir.") }
+        guard kay.count <= kaynakEnCok else { return hata("Kaynak en çok \(kaynakEnCok) karakter olabilir.") }
+        guard !ig.isEmpty else { return hata("Instagram açıklaması boş olamaz.") }
+        guard ig.count <= igMetinEnCok else { return hata("Instagram açıklaması en çok \(igMetinEnCok) karakter olabilir.") }
+        guard !gorseller.isEmpty else { return hata("En az bir görsel seçin.") }
+        guard gorseller.count <= gorselEnCok else { return hata("En çok \(gorselEnCok) görsel seçilebilir.") }
+        var toplam = 0
+        for (i, g) in gorseller.enumerated() {
+            guard gorselUzantilari[g.tur] != nil else { return hata("\(i + 1). görsel jpg, png ya da webp olmalı.") }
+            guard !g.bayt.isEmpty, g.bayt.count <= gorselBaytEnCok else { return hata("\(i + 1). görsel en çok \(gorselBaytEnCok / 1000) KB olmalı.") }
+            toplam += g.bayt.count
+        }
+        guard toplam <= toplamBaytEnCok else { return hata("Görsellerin toplamı en çok \(toplamBaytEnCok / 1_000_000) MB olabilir.") }
+        let dosya = dosyaAdi(no: no, tarih: tarih, tur: tur)
+        let adlar = gorseller.enumerated().map { "\(dosya)-\($0.offset + 1).\(gorselUzantilari[$0.element.tur] ?? "jpg")" }
+        var kanallar: [String: FSDeger] = ["instagram": kanal(ig, adlar)]
+        for (ad, id, m) in [("X", "x", x), ("WhatsApp", "whatsapp", whatsapp)] {
+            let t = m.kirpik
+            if t.isEmpty { continue }
+            guard t.count <= kanalMetinEnCok else { return hata("\(ad) metni en çok \(kanalMetinEnCok) karakter olabilir.") }
+            kanallar[id] = kanal(t)
+        }
+        let id = "\(tarih)-\(s)"
+        var y: [FirestoreIstemci.Yazim] = [
+            .olustur(yol: "posts/\(id)", alanlar: [
+                "tarih": .metin(tarih), "sira": .tam(s), "tur": .metin(tur), "no": .tam(no), "dosya": .metin(dosya),
+                "konu": .metin(k), "kaynak": .metin(kay), "kanallar": .harita(kanallar),
+            ], zaman: ["olusturma"]),
+        ]
+        for (i, g) in gorseller.enumerated() {
+            y.append(.olustur(yol: "posts/\(id)/gorseller/\(adlar[i])", alanlar: ["dosya": .metin(adlar[i]), "tur": .metin(g.tur), "veri": .bayt(g.bayt)]))
+        }
+        y.append(.olustur(yol: "audit/\(FirestoreIstemci.yeniKimlik())",
+                          alanlar: IslemKaydi.alanlar(eylem: "social.upload", hedef: id, ayrinti: String(k.prefix(120)), calisan: c), zaman: ["at"]))
+        return .success((id, y))
+    }
+}
+
+public struct PostHatasi: Error, Equatable { public var mesaj: String }
