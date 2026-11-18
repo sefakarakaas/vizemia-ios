@@ -317,9 +317,38 @@ public struct MusteriIletisimi: Equatable {
 /// Statü maili şablonları (settings/eposta → statuSablonlari).
 public struct EpostaAyari: Equatable {
     public struct Sablon: Equatable { public var aktif: Bool; public var konu: String; public var metin: String }
+    /// Tekli ve toplu gönderimde seçilen hazır metin (tur: bilgi | kampanya).
+    public struct HazirMetin: Equatable, Identifiable {
+        public var id: String
+        public var ad: String
+        public var tur: String
+        public var konu: String
+        public var metin: String
+    }
     public var statuSablonlari: [String: Sablon]
+    public var sablonlar: [HazirMetin] = EpostaAyari.varsayilanSablonlar
+    public var gunlukSinir = 280
+
+    static let varsayilanSablonlar: [HazirMetin] = [
+        HazirMetin(id: "evrak-hatirlatma", ad: "Evrak hatırlatması", tur: "bilgi", konu: "{ulke} vize başvurunuz için evraklarınız",
+                   metin: "Sayın {adSoyad},\n\n{ulke} vize başvurunuz için evraklarınızı bekliyoruz. Eksik evrak listesini size ayrıca ilettik.\n\nBaşvuru takibi: {takipLinki}"),
+        HazirMetin(id: "genel-bilgi", ad: "Genel bilgilendirme", tur: "bilgi", konu: "VizeMia — bilgilendirme", metin: "Sayın {adSoyad},\n\n"),
+        HazirMetin(id: "kampanya-ornek", ad: "Kampanya (örnek)", tur: "kampanya", konu: "VizeMia'dan size özel",
+                   metin: "Merhaba {ad},\n\nYeni seyahatiniz için vize başvurunuzda yanınızdayız. "),
+    ]
 
     public init(belge: [String: FSDeger]?) {
+        if let l = belge?["sablonlar"]?.diziDegeri {
+            sablonlar = l.prefix(50).compactMap { d in
+                guard let m = d.haritaDegeri, let id = m["id"]?.metinDegeri?.kirpik, !id.isEmpty else { return nil }
+                let ad = String((m["ad"]?.metinDegeri ?? "").kirpik.prefix(80))
+                return HazirMetin(id: String(id.prefix(40)), ad: ad.isEmpty ? "Şablon" : ad,
+                                  tur: m["tur"]?.metinDegeri == "kampanya" ? "kampanya" : "bilgi",
+                                  konu: String((m["konu"]?.metinDegeri ?? "").kirpik.prefix(200)),
+                                  metin: String((m["metin"]?.metinDegeri ?? "").prefix(20_000)))
+            }
+        }
+        if let n = belge?["gunlukSinir"]?.tamDegeri, n >= 1 { gunlukSinir = min(n, 5000) }
         // Varsayılanlar kapalı (panel: DEFAULT_EPOSTA); kayıtlı olan üzerine yazar.
         var s: [String: Sablon] = [
             "sonuc-onay": Sablon(aktif: false, konu: "", metin: ""),

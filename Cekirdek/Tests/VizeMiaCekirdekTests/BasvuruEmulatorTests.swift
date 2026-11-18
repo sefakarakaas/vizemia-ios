@@ -577,4 +577,60 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(oz.sayi.iptal, 1)
         XCTAssertEqual(oz.kasa["EUR"], -50)
     }
+
+    /// E-posta: başvurudan tek müşteriye, serbest adrese, sıradakini iptal; izinsiz yazım reddedilir.
+    func testEposta() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("mail\(ek)", "gizli-sifre-1")
+        let okur = try await e.hesapAc("okur\(ek)", "gizli-sifre-2")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("mail\(ek)"), "displayName": .metin("Ezgi Danışman"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("employees/\(okur)", alanlar: [
+            "username": .metin("okur\(ek)"), "displayName": .metin("Okur"), "role": .metin("reader"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["eposta.send"]).map { .metin($0) }),
+            "reader": .dizi(Calisan.varsayilanIzinler["reader"]!.map { .metin($0) }),
+        ])])
+        let appId = "eps\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-14\(ek)"), "firstName": .metin("AYŞE NUR"), "lastName": .metin("KAYA"),
+            "countryName": .metin("Almanya"), "statusId": .metin("potansiyel"),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "mail\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+
+        let sablon = try XCTUnwrap(EpostaAyari(belge: nil).sablonlar.first { $0.id == "evrak-hatirlatma" })
+        let d = MusteriBildirimi.epostaDegerleri(b, statu: "")
+        let konu = MusteriBildirimi.doldur(sablon.konu, d), metin = MusteriBildirimi.doldur(sablon.metin, d)
+        XCTAssertEqual(konu, "Almanya vize başvurunuz için evraklarınız")
+        XCTAssertTrue(metin.hasPrefix("Sayın Ayşe Nur Kaya,"))
+        XCTAssertEqual(EpostaIslemi.bosYerTutucular(metin), [])
+        try await ben.isle(try XCTUnwrap(EpostaIslemi.tekli(b, eposta: " Ayse@Ornek.com ", konu: konu, metin: metin, calisan: c)))
+        let l = try await ben.sorgu(koleksiyon: "eposta", kosullar: [.esit("appId", .metin(appId))], sinir: 10)
+        XCTAssertEqual(l.count, 1)
+        let m = EpostaKaydi(kimlik: l[0].kimlik, alanlar: l[0].alanlar)
+        XCTAssertEqual(m.alici, "ayse@ornek.com")
+        XCTAssertEqual(m.durumYazisi, "Sırada")
+
+        let sd = EpostaIslemi.serbestDegerler(ad: "mehmet ali yılmaz")
+        XCTAssertEqual(sd["adSoyad"], "Mehmet Ali Yılmaz")
+        try await ben.isle(try XCTUnwrap(EpostaIslemi.serbest(alici: "kurum@ornek.org", konu: "Bilgi", metin: "Merhaba", calisan: c)))
+        XCTAssertNil(EpostaIslemi.serbest(alici: "yanlis", konu: "x", metin: "y", calisan: c))
+
+        try await ben.isle(EpostaIslemi.iptal(m, calisan: c))
+        let _m2 = try await ben.belge("eposta/\(m.id)")
+        let iptal = EpostaKaydi(kimlik: m.id, alanlar: try XCTUnwrap(_m2))
+        XCTAssertEqual(iptal.durumYazisi, "İptal (panelden iptal)")
+        do { try await ben.isle(EpostaIslemi.iptal(iptal, calisan: c)); XCTFail("iptal edilen yeniden iptal edilemez") } catch {}
+
+        // İzinsiz (okur) mail yazamaz.
+        let oo = try await e.kimlik.giris(kullaniciAdi: "okur\(ek)", sifre: "gizli-sifre-2")
+        let okIst = e.istemci(oo.belirtec)
+        do { try await okIst.isle(try XCTUnwrap(EpostaIslemi.serbest(alici: "a@b.co", konu: "x", metin: "y", calisan: c))); XCTFail("izin yok") } catch {}
+    }
 }

@@ -32,7 +32,7 @@ struct EkipBolumu: Identifiable {
         ]),
         EkipBolumu(id: "iletiler", ad: "İletiler", simge: "envelope.fill", ogeler: [
             Oge(id: "bildirimler", ad: "Bildirimler (WhatsApp)", simge: "message.fill", izin: "app.sensitive", yonetici: false, rota: .bildirimler),
-            Oge(id: "eposta", ad: "E-posta", simge: "envelope.fill", izin: "eposta.send|eposta.kampanya", yonetici: false, rota: nil),
+            Oge(id: "eposta", ad: "E-posta", simge: "envelope.fill", izin: "eposta.send|eposta.kampanya", yonetici: false, rota: .eposta),
             Oge(id: "firma", ad: "Firmalara mail", simge: "building.2.fill", izin: "firma.view|firma.send", yonetici: false, rota: nil),
         ]),
         EkipBolumu(id: "sosyal", ad: "Sosyal medya", simge: "megaphone.fill", ogeler: [

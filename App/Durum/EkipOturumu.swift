@@ -177,6 +177,20 @@ final class EkipOturumu {
         URLSession.shared.dataTask(with: i).resume()
     }
 
+    /// Elle gönderilen mailleri hemen yollatır (panel: epostaHemenGonder): servis
+    /// kuyruktakileri kendisi okur, günlük sınıra uyar. Servis adresi yoksa ya da
+    /// ulaşılamazsa mail kaybolmaz; zamanlanmış görev 15 dakika içinde gönderir.
+    /// - Returns: servis adresi var ve istek gönderildi mi
+    func epostaHemen() async -> Bool {
+        guard !kasaServisUrl.isEmpty, let u = URL(string: kasaServisUrl) else { return false }
+        var i = URLRequest(url: u)
+        i.httpMethod = "POST"
+        i.timeoutInterval = 20
+        i.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
+        i.httpBody = try? JSONSerialization.data(withJSONObject: ["tur": "eposta"])
+        return (try? await URLSession.shared.data(for: i)) != nil
+    }
+
     // MARK: - Face ID kilidi
 
     func arkaPlanaGecti() { arkaPlanaGecis = Date() }

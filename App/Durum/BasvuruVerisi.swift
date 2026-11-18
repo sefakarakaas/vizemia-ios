@@ -150,6 +150,8 @@ final class BasvuruDetayVerisi {
     private(set) var dosyalar: [DosyaBilgisi] = []
     /// Müşteri için yapılan harcamalar (kasa; görmek için kasa.view ya da app.payment).
     private(set) var giderler: [KasaHareketi] = []
+    /// Bu müşteriye giden mailler (eposta.send ya da app.sensitive).
+    private(set) var epostalar: [EpostaKaydi] = []
 
     init(kimlik: String) { self.kimlik = kimlik }
 
@@ -207,11 +209,16 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler, epostalar }
 
     /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
-    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler]) async {
+    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler, .epostalar]) async {
         let odeme = ekip.yapabilir("app.payment"), hassas = ekip.yapabilir("app.sensitive")
+        if parcalar.contains(.epostalar) && (ekip.yapabilir("eposta.send") || hassas),
+           let l = try? await f.sorgu(koleksiyon: "eposta", kosullar: [.esit("appId", .metin(kimlik))], sinir: 50) {
+            epostalar = l.map { EpostaKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+                .sorted { ($0.olusma ?? .distantPast) > ($1.olusma ?? .distantPast) }
+        }
         if parcalar.contains(.giderler) && (ekip.yapabilir("kasa.view") || odeme),
            let l = try? await f.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(kimlik)), .esit("kapsam", .metin("musteri"))], sinir: 200) {
             giderler = l.map { KasaHareketi(kimlik: $0.kimlik, alanlar: $0.alanlar) }.filter { $0.tur == "gider" }.sorted { $0.tarih > $1.tarih }
@@ -236,7 +243,7 @@ final class BasvuruDetayVerisi {
 
     /// İşlemden sonra yalnız değişen parçalar yeniden okunur.
     private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci, _ ekip: EkipOturumu) async {
-        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler])
+        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler, .epostalar])
         if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
         if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
         if parcalar.contains(.pasaport), let a = try? await f.belge("\(yol)/private/passport") {
@@ -312,6 +319,27 @@ final class BasvuruDetayVerisi {
         let h = await isle(k.yazimlar, ekip, yenile: [.giderler, .gecmis])
         if h == nil { ekip.kasaBildir(k.id) }
         return h
+    }
+
+    /// Tek müşteriye mail: kuyruğa yazılır, servis varsa hemen gider. Sonuç metni ya da hata.
+    func epostaGonder(konu: String, metin: String, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        guard let adres = iletisim?.eposta, MusteriBildirimi.epostaGecerli(adres),
+              let y = EpostaIslemi.tekli(b, eposta: adres, konu: konu, metin: metin, calisan: c) else {
+            return (false, "Konu ve metin boş olamaz; formda geçerli bir e-posta olmalı.")
+        }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return (true, "Mail gönderildi.") }
+        #endif
+        if let h = await isle(y, ekip, yenile: [.epostalar]) { return (false, h) }
+        let gitti = await ekip.epostaHemen()
+        if let f = try? await ekip.istemci() { await yenile([.epostalar], f, ekip) }
+        return (true, gitti ? "Mail gönderildi." : "Mail sıraya alındı; 15 dakika içinde gider.")
+    }
+
+    func epostaIptal(_ m: EpostaKaydi, ekip: EkipOturumu) async -> String? {
+        guard let c = ekip.calisan else { return "Oturum bulunamadı." }
+        return await isle(EpostaIslemi.iptal(m, calisan: c), ekip, yenile: [.epostalar])
     }
 
     /// Formdaki metin değerleri (pasaport karşılaştırması için).
