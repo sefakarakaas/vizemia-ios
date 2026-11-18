@@ -853,6 +853,97 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(dorduncu3.grupAdi, "")
     }
 
+    func testSaklamaVeSilme() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("adm\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("adm\(ek)"), "displayName": .metin("Sefa Yönetici"), "role": .metin("admin"), "active": .mantik(true)])
+        let appId = "sil\(ek)"
+        let yol = "applications/\(appId)"
+        let takipId = String(repeating: "e", count: 60) + ek
+        let ozet = String(repeating: "f", count: 60) + ek
+        try await owner.belgeYaz(yol, alanlar: [
+            "trackingCode": .metin("2026-11\(ek)"), "year": .tam(2026), "month": .tam(11),
+            "firstName": .metin("AYŞE NUR"), "lastName": .metin("KAYA"), "passportLast3": .metin("567"),
+            "country": .metin("italya"), "countryName": .metin("İtalya"),
+            "statusId": .metin("potansiyel"), "statusName": .metin("Potansiyel"), "checklist": .harita([:]),
+            "deleteAfter": .zaman(Date().addingTimeInterval(86_400 * 30)), "legalHold": .mantik(false),
+            "openedAt": .zaman(Date()), "createdAt": .zaman(Date()), "createdBy": .metin(uid),
+        ])
+        try await owner.belgeYaz("\(yol)/private/data", alanlar: ["form": .harita([
+            "phone": .metin("0532 123 45 67"), "email": .metin("Ayse@Ornek.com"), "passportNo": .metin("U1234567"), "kampanyaIzni": .mantik(true)])])
+        try await owner.belgeYaz("\(yol)/private/keys", alanlar: ["takipId": .metin(takipId), "passportHash": .metin(ozet)])
+        try await owner.belgeYaz("\(yol)/private/fiyat", alanlar: ["tutar": .tam(4500), "paraBirimi": .metin("TRY"), "aciklama": .metin("Hizmet")])
+        try await owner.belgeYaz("\(yol)/log/l1", alanlar: ["type": .metin("created"), "text": .metin("Başvuru oluşturuldu"), "byName": .metin("Ezgi"),
+                                                       "at": .zaman(Date().addingTimeInterval(-60))])
+        try await owner.belgeYaz("\(yol)/log/l2", alanlar: ["type": .metin("status"), "text": .metin("Statü"), "statusName": .metin("Potansiyel"),
+                                                       "byName": .metin("Ezgi"), "at": .zaman(Date())])
+        try await owner.belgeYaz("\(yol)/notes/n1", alanlar: ["text": .metin("iç not")])
+        try await owner.belgeYaz("\(yol)/dosyalar/d1", alanlar: ["tur": .metin("odeme"), "parca": .tam(2)])
+        try await owner.belgeYaz("\(yol)/dosyaIcerik/d1_0", alanlar: ["veri": .metin("x")])
+        try await owner.belgeYaz("\(yol)/dosyaIcerik/d1_1", alanlar: ["veri": .metin("y")])
+        try await owner.belgeYaz("\(yol)/odemeler/o1", alanlar: ["tarih": .metin("2026-11-10"), "tutar": .tam(2000), "paraBirimi": .metin("TRY"),
+                                                            "yontem": .metin("nakit"), "dosyaId": .metin("d1"), "byName": .metin("Ezgi"), "at": .zaman(Date())])
+        try await owner.belgeYaz("\(yol)/odemeler/o2", alanlar: ["tarih": .metin("2026-11-12"), "tutar": .ondalik(500.5), "paraBirimi": .metin("TRY"),
+                                                            "byName": .metin("Ezgi"), "at": .zaman(Date())])
+        try await owner.belgeYaz("takip/\(takipId)", alanlar: ["code": .metin("2026-11\(ek)")])
+        try await owner.belgeYaz("formlar/\(takipId)", alanlar: ["appId": .metin(appId)])
+        try await owner.belgeYaz("lookup/\(ozet)", alanlar: ["apps": .dizi([.metin(appId), .metin("baska")])])
+        try await owner.belgeYaz("bildirimler/b\(ek)", alanlar: ["appId": .metin(appId), "kind": .metin("form-linki")])
+        try await owner.belgeYaz("kasa/k\(ek)", alanlar: ["appId": .metin(appId), "kapsam": .metin("musteri"), "tur": .metin("gider"),
+                                                       "tarih": .metin("2026-11-11"), "tutar": .tam(300), "paraBirimi": .metin("TRY"), "kategori": .metin("Fotokopi")])
+
+        let o = try await e.kimlik.giris(kullaniciAdi: "adm\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: nil)
+        let _b = try await ben.belge(yol)
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+
+        // Saklama: gerekçesiz olmaz; gün boşsa mevcut tarih kalır.
+        XCTAssertNil(BasvuruSilme.saklama(b, gun: "", bekletme: true, gerekce: " ", calisan: c))
+        try await ben.isle(try XCTUnwrap(BasvuruSilme.saklama(b, gun: "2027-01-15", bekletme: true, gerekce: "İtiraz süreci", calisan: c)))
+        let _b2 = try await ben.belge(yol)
+        let b2 = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b2))
+        XCTAssertTrue(b2.bekletiliyor)
+        XCTAssertEqual(b2.silinecek.map { Tr.bugun($0) }, "2027-01-15")
+
+        // Sil: uygulamanın okuduğu gibi topla, tek yazımda arşivle ve sil.
+        let _ham = try await ben.belge(yol)
+        let _veri = try await ben.belge("\(yol)/private/data")
+        let okunan = BasvuruSilme.Okunan(
+            basvuru: try XCTUnwrap(_ham),
+            form: _veri?["form"]?.haritaDegeri ?? [:],
+            anahtar: (takipId, ozet),
+            loglar: try await ben.sorgu(koleksiyon: "log", sinir: 300, ust: yol),
+            notlar: try await ben.sorgu(koleksiyon: "notes", sinir: 150, ust: yol).map(\.kimlik),
+            ustNotlar: try await ben.sorgu(koleksiyon: "ustNotlar", sinir: 50, ust: yol).map(\.kimlik),
+            dosyalar: try await ben.sorgu(koleksiyon: "dosyalar", sinir: 40, ust: yol).map { ($0.kimlik, $0.alanlar["parca"]?.tamDegeri ?? 1) },
+            odemeler: try await ben.sorgu(koleksiyon: "odemeler", sinir: 50, ust: yol),
+            fiyat: try await ben.belge("\(yol)/private/fiyat"),
+            giderler: try await ben.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(appId)), .esit("kapsam", .metin("musteri"))], sinir: 200).map(\.alanlar),
+            bildirimler: try await ben.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(appId))], sinir: 50).map(\.kimlik))
+        try await ben.isle(BasvuruSilme.sil(appId, okunan, calisan: c))
+        let silinen = try await ben.belge(yol)
+        XCTAssertNil(silinen)
+        let takip = try await owner.belge("takip/\(takipId)")
+        XCTAssertNil(takip)
+        let lookup = try await owner.belge("lookup/\(ozet)")
+        XCTAssertEqual(lookup?["apps"]?.diziDegeri?.compactMap { $0.metinDegeri }, ["baska"])
+        let _k = try await ben.belge("musteriArsivi/\(appId)")
+        let k = ArsivKaydi(kimlik: appId, alanlar: try XCTUnwrap(_k))
+        XCTAssertEqual(k.adSoyad, "AYŞE NUR KAYA")
+        XCTAssertEqual(try XCTUnwrap(_k)["telefon"]?.metinDegeri, "+905321234567")
+        XCTAssertEqual(try XCTUnwrap(_k)["eposta"]?.metinDegeri, "ayse@ornek.com")
+        XCTAssertEqual(try XCTUnwrap(_k)["anahtarlar"]?.diziDegeri?.compactMap { $0.metinDegeri },
+                       ["ayşe", "nur", "kaya", "ayşe nur kaya", "+905321234567", "ayse@ornek.com"])
+        XCTAssertEqual(try XCTUnwrap(_k)["odemeToplam"]?.haritaDegeri?["TRY"], .ondalik(2500.5))
+        XCTAssertEqual(try XCTUnwrap(_k)["giderToplam"]?.haritaDegeri?["TRY"], .tam(300))
+        XCTAssertEqual(try XCTUnwrap(_k)["islemler"]?.diziDegeri?.first?.haritaDegeri?["tur"]?.metinDegeri, "retention")
+        XCTAssertEqual(try XCTUnwrap(_k)["odemeler"]?.diziDegeri?.first?.haritaDegeri?["tarih"]?.metinDegeri, "2026-11-12")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

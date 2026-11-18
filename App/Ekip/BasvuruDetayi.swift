@@ -9,6 +9,7 @@ struct BasvuruDetayi: View {
     @Environment(EkipOturumu.self) private var ekip
     @Environment(IcerikDeposu.self) private var icerik
     @Environment(EkipVerisi.self) private var ekipVerisi
+    @Environment(\.dismiss) private var dismiss
     @State private var veri: BasvuruDetayVerisi
 
     // Statü
@@ -119,6 +120,13 @@ struct BasvuruDetayi: View {
                 bilgiKarti(b).belirme(8)
                 if GrupIsi.gecerliId(b.grupId) || ekip.yapabilir("app.edit") || ekip.yapabilir("app.create") {
                     GrupKarti(veri: veri, b: b, baglam: baglam(b)).belirme(9)
+                }
+                if ekip.calisan?.yonetici == true {
+                    SaklamaKarti(veri: veri, b: b, baglam: baglam(b)) {
+                        ekipVerisi.basvurular.eskit()
+                        dismiss()
+                    }
+                    .belirme(10)
                 }
                 gecmisKarti.belirme(10)
                 Text("İyi niyet mektubu ve konsolosluk formu (PDF / portal) şimdilik panelden yapılır.")

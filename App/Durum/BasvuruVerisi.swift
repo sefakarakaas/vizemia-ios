@@ -382,6 +382,52 @@ final class BasvuruDetayVerisi {
         return await isle(EpostaIslemi.iptal(m, calisan: c), ekip, yenile: [.epostalar])
     }
 
+    // MARK: - Saklama ve silme (yalnız yönetici)
+
+    func saklamaKaydet(gun: String, bekletme: Bool, gerekce: String, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        guard let y = BasvuruSilme.saklama(b, gun: gun, bekletme: bekletme, gerekce: gerekce, calisan: c) else { return "Gerekçe yazın." }
+        return await isle(y, ekip, yenile: [.basvuru, .gecmis])
+    }
+
+    /// Başvuruyu ve kişisel verisini kalıcı siler, müşteri arşivine alır (panel: deleteApplication).
+    /// Silinecek her şey önce okunur (panelle aynı sınırlar), sonra tek yazımda silinir.
+    func sil(ekip: EkipOturumu) async -> String? {
+        guard let c = ekip.calisan else { return "Oturum bulunamadı." }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return nil }
+        #endif
+        do {
+            let f = try await ekip.istemci()
+            guard let ham = try await f.belge(yol) else { return "Başvuru bulunamadı." }
+            async let veriB = f.belge("\(yol)/private/data")
+            async let anahtarB = f.belge("\(yol)/private/keys")
+            async let fiyatB = f.belge("\(yol)/private/fiyat")
+            async let loglar = f.sorgu(koleksiyon: "log", sinir: 300, ust: yol)
+            async let notlarL = f.sorgu(koleksiyon: "notes", sinir: 150, ust: yol)
+            async let ustL = f.sorgu(koleksiyon: "ustNotlar", sinir: 50, ust: yol)
+            async let dosyaL = f.sorgu(koleksiyon: "dosyalar", sinir: 40, ust: yol)
+            async let odemeL = f.sorgu(koleksiyon: "odemeler", sinir: 50, ust: yol)
+            async let giderL = f.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(kimlik)), .esit("kapsam", .metin("musteri"))], sinir: 200)
+            async let bildirimL = f.sorgu(koleksiyon: "bildirimler", kosullar: [.esit("appId", .metin(kimlik))], sinir: 50)
+            let k = try await anahtarB
+            var anahtar: (takipId: String, pasaportOzeti: String)?
+            if let t = k?["takipId"]?.metinDegeri, let p = k?["passportHash"]?.metinDegeri { anahtar = (t, p) }
+            let o = BasvuruSilme.Okunan(
+                basvuru: ham, form: (try await veriB)?["form"]?.haritaDegeri ?? [:], anahtar: anahtar,
+                loglar: try await loglar, notlar: try await notlarL.map(\.kimlik), ustNotlar: try await ustL.map(\.kimlik),
+                dosyalar: try await dosyaL.map { ($0.kimlik, $0.alanlar["parca"]?.tamDegeri ?? 1) },
+                odemeler: try await odemeL, fiyat: try await fiyatB, giderler: try await giderL.map(\.alanlar),
+                bildirimler: try await bildirimL.map(\.kimlik))
+            try await f.isle(BasvuruSilme.sil(kimlik, o, calisan: c))
+            return nil
+        } catch FirestoreHatasi.izinYok {
+            return "Silme için yönetici olmak gerekir."
+        } catch {
+            return HataAciklamasi.metin(error, "Silinemedi. İnternet bağlantınızı kontrol edip yeniden deneyin.")
+        }
+    }
+
     // MARK: - Grup
 
     enum GrupSonucu { case tamam(String), sor(String), hata(String) }
