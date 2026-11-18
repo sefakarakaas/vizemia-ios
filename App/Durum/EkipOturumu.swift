@@ -37,6 +37,8 @@ final class EkipOturumu {
     private(set) var kasaServisUrl = ""
     /// Ayarlar → Kasa ve raporlar: gider kategorileri, döviz büroları, rapor saati.
     private(set) var kasaAyari = KasaAyari()
+    /// Ayarlar → Genel: firmanın telefonu, e-postası, web adresi, adresi (firma cevap mailinin altbilgisi).
+    private(set) var firmaIletisimi = FirmaIletisimi()
     /// Ayarlar → Randevu konumları (harita bağlantıları) ve otomatik bildirim ayarı.
     private(set) var konumlar = KonumAyari(belge: nil)
     private(set) var bildirimAyari = BildirimAyari(belge: nil)
@@ -141,6 +143,7 @@ final class EkipOturumu {
                 if let d = g["idleMinutes"]?.tamDegeri, d >= 1 { bosDakika = d }
                 if let d = g["retentionDays"]?.tamDegeri, d >= 1 { saklamaGun = d }
                 if let d = g["warnDays"]?.tamDegeri, d >= 1 { uyariGun = d }
+                firmaIletisimi = FirmaIletisimi(genel: g)
             }
             evrakAyari = EvrakAyari(belge: try? await evrak)
             epostaAyari = EpostaAyari(belge: try? await eposta)

@@ -17,7 +17,9 @@ let package = Package(
         ),
         .testTarget(
             name: "VizeMiaCekirdekTests",
-            dependencies: ["VizeMiaCekirdek"]
+            dependencies: ["VizeMiaCekirdek"],
+            // Sitenin JavaScript'inden üretilmiş beklenen çıktılar (testler dosyadan okur).
+            exclude: ["Ornekler"]
         ),
     ]
 )

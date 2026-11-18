@@ -633,4 +633,34 @@ final class BasvuruEmulatorTests: XCTestCase {
         let okIst = e.istemci(oo.belirtec)
         do { try await okIst.isle(try XCTUnwrap(EpostaIslemi.serbest(alici: "a@b.co", konu: "x", metin: "y", calisan: c))); XCTFail("izin yok") } catch {}
     }
+
+    /// Firmaya cevap: kayıtlı firmanın adresine (kural adresi firmadan karşılaştırır).
+    func testFirmaCevap() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("firma\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("firma\(ek)"), "displayName": .metin("Sefa Karakaş"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["firma.view", "firma.send"]).map { .metin($0) }),
+        ])])
+        let firmaId = String(repeating: "a", count: 60) + ek
+        try await owner.belgeYaz("firmalar/\(firmaId)", alanlar: [
+            "ad": .metin("Örnek Makine A.Ş."), "eposta": .metin("info@ornekmakine.com"), "bolge": .metin("OSTİM"),
+            "iysKayit": .mantik(true), "engelli": .mantik(false),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "firma\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        var g = FirmaIletisimi(); g.telefon = "0549 907 25 23"
+        let y = try XCTUnwrap(FirmaMaili.cevap(firmaId: firmaId, firma: "Örnek Makine A.Ş.", eposta: "info@ornekmakine.com",
+                                               konu: "Ynt: Vize", govde: "Merhaba,\n\nBilgi ekte.", genel: g, calisan: c))
+        try await ben.isle(y)
+        let l = try await ben.sorgu(koleksiyon: "firmaYanitlari", kosullar: [.esit("firmaId", .metin(firmaId))], sinir: 5)
+        XCTAssertEqual(l.map { FirmaMaili(kimlik: $0.kimlik, tur: "yanit", alanlar: $0.alanlar).durumAdi }, ["Kuyrukta"])
+        // Başka adrese cevap yazılamaz.
+        let yanlis = try XCTUnwrap(FirmaMaili.cevap(firmaId: firmaId, firma: "x", eposta: "baska@ornek.com", konu: "a", govde: "b", genel: g, calisan: c))
+        do { try await ben.isle(yanlis); XCTFail("adres firmanınki olmalı") } catch {}
+    }
 }
