@@ -1,0 +1,49 @@
+name: Xcode 27 denemesi
+
+# Apple, Nisan 2027'den itibaren App Store'a yalnız iOS 27 SDK (Xcode 27) ile
+# derlenmiş sürümleri kabul edecek (ITMS-90725). GitHub'ın Xcode 27 makinesi
+# şimdilik "önizleme"; asıl derleme ve TestFlight macos-26'da (Xcode 26) kalıyor.
+# Bu iş elle çalıştırılır: uygulamanın Xcode 27 ile derlenip derlenmediğini
+# önceden görmek için. Sorunsuzsa TestFlight işi xcode-27'ye geçirilir.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  uygulama:
+    name: Xcode 27 ile derle
+    runs-on: xcode-27
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode sürümü
+        run: xcodebuild -version
+      - name: Çekirdek testleri
+        working-directory: Cekirdek
+        run: |
+          kod=0
+          swift test > test.log 2>&1 || kod=$?
+          grep -E "error:|failed|Executed [0-9]+ tests" test.log | tail -n 20 || true
+          exit $kod
+      - name: Projeyi üret
+        run: |
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Derle (iPhone simülatörü)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project VizeMia.xcodeproj -scheme VizeMia -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/derived \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*deprecated|\*\* BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
+      - name: Derleme kaydı
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode27-log
+          path: xcodebuild.log
+          retention-days: 14
