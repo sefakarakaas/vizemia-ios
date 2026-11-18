@@ -1109,6 +1109,42 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(m["not"]?.metinDegeri, "not 2")
     }
 
+    func testTopluEposta() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("tp\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("tp\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["eposta.send", "eposta.kampanya"]).map { .metin($0) }),
+        ])])
+        let o = try await e.kimlik.giris(kullaniciAdi: "tp\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let adaylar = [
+            TopluAday(eposta: " Ayse@Ornek.com ", ad: "AYŞE", soyad: "KAYA", ulke: "İtalya", kampanyaIzni: true, kaynak: "arsiv"),
+            TopluAday(eposta: "ayse@ornek.com", ad: "Ayşe", soyad: "Kaya", ulke: "", kampanyaIzni: true, kaynak: "talep"),
+            TopluAday(eposta: "yok", ad: "X", soyad: "", ulke: "", kampanyaIzni: true, kaynak: "talep"),
+            TopluAday(eposta: "izinsiz@ornek.com", ad: "Can", soyad: "", ulke: "", kampanyaIzni: false, kaynak: "talep"),
+            TopluAday(eposta: "cikti@ornek.com", ad: "Ece", soyad: "", ulke: "", kampanyaIzni: true, kaynak: "talep"),
+        ]
+        let s = TopluEposta.aliciSec(adaylar, kampanya: true, ayrilanlar: ["cikti@ornek.com"])
+        XCTAssertEqual(s.alicilar.map(\.eposta), ["ayse@ornek.com"])
+        XCTAssertEqual(s.atlanan, TopluEposta.Atlanan(epostaYok: 1, izinYok: 1, ayrildi: 1, tekrar: 1))
+        XCTAssertEqual(TopluEposta.aliciSec(adaylar, kampanya: false, ayrilanlar: []).alicilar.count, 3)
+        let kid = TopluEposta.kampanyaId()
+        let k = try XCTUnwrap(TopluEposta.kuyruk(s.alicilar, konu: "{ulke} için fırsat", metin: "Merhaba {ad},", kampanya: true, kampanyaId: kid, calisan: c))
+        XCTAssertEqual(k.adet, 1)
+        for g in k.gruplar { try await ben.isle(g) }
+        let l = try await ben.sorgu(koleksiyon: "eposta", kosullar: [.esit("kampanyaId", .metin(kid))], sinir: 10)
+        XCTAssertEqual(l.first?.alanlar["subject"]?.metinDegeri, "İtalya için fırsat")
+        XCTAssertEqual(l.first?.alanlar["text"]?.metinDegeri, "Merhaba Ayşe,")
+        XCTAssertEqual(l.first?.alanlar["tur"]?.metinDegeri, "kampanya")
+        XCTAssertNil(TopluEposta.kuyruk(s.alicilar, konu: " ", metin: "x", kampanya: false, kampanyaId: kid, calisan: c))
+        XCTAssertEqual(TopluEposta.adBol("Mehmet Ali Yılmaz").ad, "Mehmet Ali")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

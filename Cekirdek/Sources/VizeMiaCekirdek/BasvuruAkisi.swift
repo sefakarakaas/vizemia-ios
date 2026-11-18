@@ -330,6 +330,8 @@ public struct EpostaAyari: Equatable {
     public var statuSablonlari: [String: Sablon]
     public var sablonlar: [HazirMetin] = EpostaAyari.varsayilanSablonlar
     public var gunlukSinir = 280
+    /// Ticari ileti (kampanya) için İYS kaydı şart; kayıt bitene kadar kampanya gönderilemez.
+    public var iysTamam = false
 
     static let varsayilanSablonlar: [HazirMetin] = [
         HazirMetin(id: "evrak-hatirlatma", ad: "Evrak hatırlatması", tur: "bilgi", konu: "{ulke} vize başvurunuz için evraklarınız",
@@ -351,6 +353,7 @@ public struct EpostaAyari: Equatable {
             }
         }
         if let n = belge?["gunlukSinir"]?.tamDegeri, n >= 1 { gunlukSinir = min(n, 5000) }
+        iysTamam = belge?["iysTamam"]?.mantikDegeri == true
         // Varsayılanlar kapalı (panel: DEFAULT_EPOSTA); kayıtlı olan üzerine yazar.
         var s: [String: Sablon] = [
             "sonuc-onay": Sablon(aktif: false, konu: "", metin: ""),

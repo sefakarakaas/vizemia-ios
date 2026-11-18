@@ -83,7 +83,7 @@ public enum EpostaIslemi {
 
     /// Kuyruk belgesi (panel: kuyrugaEkle). Adres, konu ya da metin geçersizse nil.
     static func kuyruk(alici: String, ad: String, konu: String, metin: String, tur: String, appId: String = "", kaynak: String = "",
-                       calisan c: Calisan) -> Y? {
+                       kampanyaId: String = "", calisan c: Calisan) -> Y? {
         let e = alici.kirpik.lowercased()
         let k = konu.kirpik, m = metin.kirpik
         guard MusteriBildirimi.epostaGecerli(e), !k.isEmpty, !m.isEmpty else { return nil }
@@ -95,6 +95,7 @@ public enum EpostaIslemi {
         a["tur"] = .metin(tur)
         if !appId.isEmpty { a["appId"] = .metin(appId) }
         if !kaynak.isEmpty { a["kaynak"] = .metin(kaynak) }
+        if !kampanyaId.isEmpty { a["kampanyaId"] = .metin(String(kampanyaId.prefix(60))) }
         a["status"] = .metin("queued")
         a["attempts"] = .tam(0)
         a["createdBy"] = .metin(c.uid)

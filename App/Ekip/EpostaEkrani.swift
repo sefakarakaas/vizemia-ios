@@ -24,8 +24,24 @@ struct EpostaEkrani: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Elle gönderilen mailler (tek müşteri, serbest) Gönder'e basınca hemen gider. Statü değişince giden otomatik mailler 30 dakika bekler ve yalnız gönderim saatlerinde gider. Günlük sınır: \(ekip.epostaAyari.gunlukSinir) mail. Toplu gönderim ve kampanyalar şimdilik panelden.")
+                Text("Elle gönderilen mailler (tek müşteri, serbest) Gönder'e basınca hemen gider. Statü değişince giden otomatik mailler 30 dakika bekler ve yalnız gönderim saatlerinde gider. Günlük sınır: \(ekip.epostaAyari.gunlukSinir) mail.")
                     .font(.caption).foregroundStyle(Tema.govde)
+                if ekip.yapabilir("eposta.send") || ekip.yapabilir("eposta.kampanya") {
+                    NavigationLink(value: EkipRota.topluEposta) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "envelope.badge.person.crop").font(.title3).foregroundStyle(Tema.turkuaz)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Toplu gönder").font(.headline).foregroundStyle(Tema.lacivert)
+                                Text("Bilgilendirme ya da kampanya: başvurular, talepler, müşteri arşivi")
+                                    .font(.caption).foregroundStyle(Tema.govde)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Tema.silik)
+                        }
+                        .kart()
+                    }
+                    .buttonStyle(.plain)
+                }
                 if ekip.yapabilir("eposta.send") {
                     SerbestEpostaKarti { m in
                         goster(m)
