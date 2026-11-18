@@ -100,6 +100,7 @@ struct BasvuruDetayi: View {
                 }
                 if ekip.yapabilir("app.payment") { OdemelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
                 if ekip.yapabilir("app.sensitive") { BelgelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
+                if ekip.yapabilir("app.sensitive") { PasaportKontrolKarti(veri: veri, baglam: baglam(b)).belirme(5) }
                 evrakKarti(b).belirme(5)
                 if !b.konsTakipKodu.isEmpty || ekip.yapabilir("app.edit") {
                     KonsoloslukKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
@@ -109,7 +110,7 @@ struct BasvuruDetayi: View {
                 bilgiKarti(b).belirme(8)
                 if veri.grup.count > 1 { grupKarti(b).belirme(9) }
                 gecmisKarti.belirme(10)
-                Text("Pasaport okutma, başvuru formu ve müşteri formu işlemleri sıradaki güncellemeyle uygulamaya gelecek; şimdilik panelden yapılır.")
+                Text("Müşteri formu, iyi niyet mektubu ve konsolosluk formu (PDF / portal) şimdilik panelden yapılır.")
                     .font(.caption)
                     .foregroundStyle(Tema.silik)
                     .padding(.horizontal, 4)

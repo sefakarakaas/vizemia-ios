@@ -59,6 +59,14 @@ struct BasvuruFormuEkrani: View {
                         .foregroundStyle(Tema.mavi)
                         .kartSoluk()
                 }
+                PasaporttanDoldurKutusu { gelen, zorla in
+                    // Bu ülkenin formunda sorulan (kapalıysa açılmış) alanlar.
+                    let sorulan = Set(alanlar.filter { !$0.kapali || veri.acikKapalilar.contains($0.key) }.map(\.key))
+                    let r = PasaporttanDoldurma.uygula(gelen, degerler: veri.degerler, sorulan: sorulan, zorla: zorla)
+                    veri.degerler = r.degerler
+                    return r
+                }
+                .belirme(0)
                 basvuruKarti.belirme(0)
                 ForEach(Array(sema.gruplar.enumerated()), id: \.element.id) { i, g in
                     let grup = alanlar.filter { $0.group == g.id }

@@ -452,5 +452,22 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(duzenlenmis.soyad, "VELİOĞLU")
         XCTAssertEqual(duzenlenmis.pasaportSon3, "999")
         XCTAssertEqual(duzenlenmis.randevu, b.randevu, "randevu günü aynı: saat korunur")
+
+        // 4) Pasaport kontrolü: önce otomatik, sonra danışman onayı (üzerine yazar; onaylayan bilgisi eklenir).
+        try await ben.isle(BasvuruIslemi.pasaportKontrolu(duzenlenmis, durum: .otomatik, bakilanlar: ["İsim", "Soyisim"],
+                                                          uyusmayanlar: [], calisan: calisan))
+        let _p1 = try await ben.belge("applications/\(yeni.kimlik)/private/passport")
+        var pk = PasaportKontrolu(alanlar: try XCTUnwrap(_p1))
+        XCTAssertEqual(pk.durum, .otomatik)
+        XCTAssertEqual(pk.onaylayan, "")
+        XCTAssertNotNil(pk.zaman)
+        try await ben.isle(BasvuruIslemi.pasaportKontrolu(duzenlenmis, durum: .danisman, bakilanlar: ["İsim", "Soyisim", "Pasaport no"],
+                                                          uyusmayanlar: ["Soyisim"], calisan: calisan))
+        let _p2 = try await ben.belge("applications/\(yeni.kimlik)/private/passport")
+        pk = PasaportKontrolu(alanlar: try XCTUnwrap(_p2))
+        XCTAssertEqual(pk.durumAdi, "Danışman onayladı")
+        XCTAssertEqual(pk.uyusmayanlar, ["Soyisim"])
+        XCTAssertEqual(pk.onaylayan, "Ezgi Danışman")
+        XCTAssertNotNil(pk.onayZamani)
     }
 }

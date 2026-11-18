@@ -138,6 +138,8 @@ final class BasvuruDetayVerisi {
     private(set) var takipId: String?
     /// Hassas bilgiler (private/data → form); yetki yoksa nil.
     private(set) var form: [String: FSDeger]?
+    /// Pasaport kontrolünün sonucu (private/passport); yapılmadıysa ya da yetki yoksa nil.
+    private(set) var pasaport: PasaportKontrolu?
     private(set) var yukleniyor = false
     private(set) var bulunamadi = false
     private(set) var hata: String?
@@ -171,6 +173,7 @@ final class BasvuruDetayVerisi {
             async let ust: [FirestoreIstemci.Belge] = f.sorgu(koleksiyon: "ustNotlar", sirala: ("at", .azalan), sinir: 50, ust: yol)
             async let anahtar: [String: FSDeger]? = anahtarGorur ? f.belge("\(yol)/private/keys") : nil
             async let veri: [String: FSDeger]? = ekip.yapabilir("app.sensitive") ? f.belge("\(yol)/private/data") : nil
+            async let pk: [String: FSDeger]? = ekip.yapabilir("app.sensitive") ? f.belge("\(yol)/private/passport") : nil
             async let uyeler: [FirestoreIstemci.Belge] = b.grupId.isEmpty ? []
                 : f.sorgu(koleksiyon: "applications", kosullar: [.esit("grupId", .metin(b.grupId))], sinir: 50)
             gecmis = try await log.map { GecmisSatiri(kimlik: $0.kimlik, alanlar: $0.alanlar) }
@@ -182,6 +185,8 @@ final class BasvuruDetayVerisi {
             // Yetki yoksa ya da form kaydı yoksa nil (panel: form null).
             let veriBelgesi: [String: FSDeger]? = (try? await veri) ?? nil
             form = veriBelgesi.map { $0["form"]?.haritaDegeri ?? [:] }
+            let pkBelgesi: [String: FSDeger]? = (try? await pk) ?? nil
+            pasaport = pkBelgesi.map { PasaportKontrolu(alanlar: $0) }
             let grupBelgeleri: [FirestoreIstemci.Belge] = (try? await uyeler) ?? []
             grup = grupBelgeleri.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
             await ekleriYukle(ekip, f)
@@ -200,7 +205,7 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport }
 
     /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
     private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar]) async {
@@ -228,6 +233,9 @@ final class BasvuruDetayVerisi {
         let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar])
         if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
         if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
+        if parcalar.contains(.pasaport), let a = try? await f.belge("\(yol)/private/passport") {
+            pasaport = PasaportKontrolu(alanlar: a)
+        }
         if parcalar.contains(.gecmis),
            let l = try? await f.sorgu(koleksiyon: "log", sirala: ("at", .azalan), sinir: Self.gecmisSiniri, ust: yol) {
             gecmis = l.map { GecmisSatiri(kimlik: $0.kimlik, alanlar: $0.alanlar) }
@@ -286,6 +294,29 @@ final class BasvuruDetayVerisi {
         let kanal = [r.sms ? "SMS" : "", r.eposta ? "e-posta" : ""].filter { !$0.isEmpty }.joined(separator: " ve ")
         return (true, kanal.isEmpty ? "Statü güncellendi."
                 : "Statü güncellendi. Müşteriye \(kanal) 30 dk sonra gider; bu sürede statü değişirse gitmez.")
+    }
+
+    /// Formdaki metin değerleri (pasaport karşılaştırması için).
+    var formMetinleri: [String: String] {
+        var d: [String: String] = [:]
+        for (k, v) in form ?? [:] { if let m = v.metinDegeri { d[k] = m } }
+        return d
+    }
+
+    /// Pasaport kontrolünü kaydeder (sonuç + geçmiş + işlem kaydı). MRZ ve fotoğraf yazılmaz.
+    func pasaportKaydet(_ durum: PasaportKontrolu.Durum, _ d: PasaportDegerlendirmesi, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        let y = BasvuruIslemi.pasaportKontrolu(b, durum: durum, bakilanlar: d.satirlar.map(\.etiket),
+                                               uyusmayanlar: d.uyusmayanlar, calisan: c)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") {
+            var a: [String: FSDeger] = ["status": .metin(durum.rawValue), "byName": .metin(c.gorunenAd), "at": .zaman(Date())]
+            a["mismatches"] = .dizi(d.uyusmayanlar.map { FSDeger.metin($0) })
+            pasaport = PasaportKontrolu(alanlar: a)
+            return nil
+        }
+        #endif
+        return await isle(y, ekip, yenile: [.pasaport, .gecmis])
     }
 
     private func dosyaVar(_ f: FirestoreIstemci, tur: String) async -> Bool? {
