@@ -292,6 +292,10 @@ public struct FirestoreIstemci {
         case diziyeEkle(yol: String, alan: String, degerler: [FSDeger])
         /// Dizi alanından öğeleri çıkarır: panelin `arrayRemove` + merge.
         case diziden(yol: String, alan: String, degerler: [FSDeger])
+        /// İç içe alanlara yazım (panelin `updateDoc(ref, {"kanallar.x.durum": …})`): her
+        /// yol ayrı ayrı maskelenir, aynı haritadaki öteki alanlara dokunulmaz.
+        /// `zaman`: sunucu zamanı yazılacak yollar (ör. ["kanallar", "x", "paylasildi_tarih"]).
+        case derin(yol: String, alanlar: [[String]: FSDeger], zaman: [[String]] = [])
     }
 
     /// Yazımları tek istekte (documents:commit) gönderir.
@@ -330,6 +334,18 @@ public struct FirestoreIstemci {
             return g
         case let .sil(yol):
             return ["delete": "\(kok)/\(yol)"]
+        case let .derin(yol, alanlar, zaman):
+            var agac: [String: FSDeger] = [:]
+            for (parcalar, deger) in alanlar { FirestoreIstemci.yerlestir(&agac, parcalar[...], deger) }
+            var g: [String: Any] = [
+                "update": ["name": "\(kok)/\(yol)", "fields": agac.mapValues { $0.json }],
+                "updateMask": ["fieldPaths": alanlar.keys.map { FirestoreIstemci.alanYolu($0) }.sorted()],
+                "currentDocument": ["exists": true],
+            ]
+            if !zaman.isEmpty {
+                g["updateTransforms"] = zaman.map { ["fieldPath": FirestoreIstemci.alanYolu($0), "setToServerValue": "REQUEST_TIME"] }
+            }
+            return g
         case let .diziyeEkle(yol, alan, degerler), let .diziden(yol, alan, degerler):
             let islem = { if case .diziyeEkle = y { return "appendMissingElements" } else { return "removeAllFromArray" } }()
             return [
@@ -338,6 +354,15 @@ public struct FirestoreIstemci {
                 "updateTransforms": [["fieldPath": FirestoreIstemci.alanYolu([alan]), islem: ["values": degerler.map { $0.json }]]],
             ]
         }
+    }
+
+    /// İç içe haritaya değer yerleştirir (["a","b"] → {a: {b: değer}}).
+    static func yerlestir(_ h: inout [String: FSDeger], _ p: ArraySlice<String>, _ d: FSDeger) {
+        guard let ilk = p.first else { return }
+        if p.count == 1 { h[ilk] = d; return }
+        var ic = h[ilk]?.haritaDegeri ?? [:]
+        yerlestir(&ic, p.dropFirst(), d)
+        h[ilk] = .harita(ic)
     }
 
     /// Alan yolu: düz adlar olduğu gibi, tire gibi işaret içerenler ters tırnakla

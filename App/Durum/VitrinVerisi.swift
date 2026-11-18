@@ -31,7 +31,9 @@ final class VitrinVerisi {
         defer { yukleniyor = false }
         do {
             let f = try await ekip.istemci()
-            async let s: [FirestoreIstemci.Belge] = (ekip.yapabilir("vitrin.edit") || ekip.yapabilir("vitrin.publish"))
+            // İzin önce hesaplanır: async let içinden ana aktördeki oturuma erişilemez.
+            let slaytGorur = ekip.yapabilir("vitrin.edit") || ekip.yapabilir("vitrin.publish")
+            async let s: [FirestoreIstemci.Belge] = slaytGorur
                 ? f.sorgu(koleksiyon: "vitrin", sirala: ("sira", .artan), sinir: 100) : []
             async let h = f.sorgu(koleksiyon: "fotoHavuzu", sinir: 100)
             slaytlar = try await s.map { VitrinSlayti(kimlik: $0.kimlik, alanlar: $0.alanlar) }

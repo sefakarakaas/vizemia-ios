@@ -220,7 +220,7 @@ final class BasvuruAkisiTests: XCTestCase {
         let yollar = r.yazimlar.map { y -> String in
             switch y {
             case let .guncelle(yol, _, _, _), let .olustur(yol, _, _), let .yaz(yol, _, _), let .sil(yol),
-                 let .diziyeEkle(yol, _, _), let .diziden(yol, _, _): return yol
+                 let .diziyeEkle(yol, _, _), let .diziden(yol, _, _), let .derin(yol, _, _): return yol
             }
         }
         XCTAssertEqual(yollar.count, 5)

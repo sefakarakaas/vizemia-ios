@@ -796,4 +796,80 @@ final class BasvuruEmulatorTests: XCTestCase {
         let silinen = try await owner.belge("vitrin/\(k.id)")
         XCTAssertNil(silinen)
     }
+
+    /// Sosyal medya: kanal işareti (yalnız o kanal), Instagram isteği, silme (görselleriyle), post isteği.
+    func testSosyal() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("sosyal\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("sosyal\(ek)"), "displayName": .metin("Ezgi Danışman"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["social.instagram", "social.delete"]).map { .metin($0) }),
+        ])])
+        let gun = "2026-11-\(String(ek.suffix(2)).count == 2 ? "1" + String(ek.suffix(1)) : "10")"
+        func post(_ sira: Int) -> [String: FSDeger] {
+            [
+                "tarih": .metin(gun), "sira": .tam(sira), "tur": .metin("bilgi"), "no": .tam(sira), "dosya": .metin("VizeMia-Post-\(sira)"),
+                "konu": .metin("Schengen ipucu \(sira)"), "kaynak": .metin(""), "olusturma": .zaman(Date()),
+                "kanallar": .harita([
+                    "instagram": .harita(["metin": .metin("IG metni"), "gorseller": .dizi([.harita(["dosya": .metin("g\(sira)-1.jpg")])]),
+                                          "durum": .metin("bekliyor"), "paylasildi_tarih": .bos, "paylasan": .bos]),
+                    "x": .harita(["metin": .metin("X metni"), "gorseller": .dizi([]), "durum": .metin("bekliyor"),
+                                  "paylasildi_tarih": .bos, "paylasan": .bos]),
+                ]),
+            ]
+        }
+        let id1 = "\(gun)-1", id2 = "\(gun)-2"
+        try await owner.belgeYaz("posts/\(id1)", alanlar: post(1))
+        try await owner.belgeYaz("posts/\(id2)", alanlar: post(2))
+        try await owner.belgeYaz("posts/\(id2)/gorseller/g2-1.jpg", alanlar: ["dosya": .metin("g2-1.jpg"), "tur": .metin("image/jpeg"), "veri": .bayt(Data([1, 2, 3]))])
+        let o = try await e.kimlik.giris(kullaniciAdi: "sosyal\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        func oku(_ id: String) async throws -> SosyalPost {
+            let a = try await ben.belge("posts/\(id)")
+            return SosyalPost(kimlik: id, alanlar: try XCTUnwrap(a))
+        }
+
+        var p1 = try await oku(id1)
+        XCTAssertEqual(p1.gorseller("x"), ["g1-1.jpg"], "X'in görseli yoksa Instagram'ınki")
+        try await ben.isle(SosyalIslemi.isaret(p1, kanal: "x", paylasildi: true, calisan: c))
+        p1 = try await oku(id1)
+        XCTAssertEqual(p1.durum("x"), "paylasildi")
+        XCTAssertEqual(p1.kanallar["x"]?.paylasan, "Ezgi Danışman")
+        XCTAssertNotNil(p1.kanallar["x"]?.paylasildiTarih)
+        XCTAssertEqual(p1.kanallar["x"]?.metin, "X metni", "öteki alanlar yerinde")
+        XCTAssertEqual(p1.durum("instagram"), "bekliyor")
+        XCTAssertEqual(p1.rozetler("instagram"), ["X"])
+        try await ben.isle(SosyalIslemi.isaret(p1, kanal: "x", paylasildi: false, calisan: c))
+        p1 = try await oku(id1)
+        XCTAssertEqual(p1.durum("x"), "bekliyor")
+        XCTAssertNil(p1.kanallar["x"]?.paylasildiTarih)
+
+        XCTAssertTrue(p1.otomatikIstenebilir("instagram"))
+        try await ben.isle(SosyalIslemi.instagramIstegi(p1, calisan: c))
+        p1 = try await oku(id1)
+        XCTAssertTrue(p1.otomatikSuruyor("instagram"))
+        XCTAssertTrue(p1.elleKilitli("instagram"))
+        do { try await ben.isle(SosyalIslemi.isaret(p1, kanal: "instagram", paylasildi: true, calisan: c)); XCTFail("otomatik sürerken elle işaret yok") } catch {}
+        do { try await ben.isle(SosyalIslemi.sil(p1, gorseller: [], videoParcalari: [], calisan: c)); XCTFail("gönderilirken silinemez") } catch {}
+
+        let p2 = try await oku(id2)
+        let g = try await ben.sorgu(koleksiyon: "gorseller", sinir: 20, ust: "posts/\(id2)")
+        XCTAssertEqual(g.first?.alanlar["veri"]?.baytDegeri, Data([1, 2, 3]))
+        try await ben.isle(SosyalIslemi.sil(p2, gorseller: g.map(\.kimlik), videoParcalari: [], calisan: c))
+        let silinen = try await owner.belge("posts/\(id2)")
+        XCTAssertNil(silinen)
+
+        XCTAssertEqual(PostIstegi.hata(metin: "x", hedefTarih: "2020-01-01", bugun: Tr.bugun()), "Geçmiş bir tarih seçilemez.")
+        try await ben.isle(SosyalIslemi.istek(metin: "Almanya randevu açıldı postu", hedefTarih: "", calisan: c))
+        let istekler = try await ben.sorgu(koleksiyon: "postIstekleri", kosullar: [.esit("isteyenUid", .metin(uid))], sinir: 5)
+            .map { PostIstegi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        XCTAssertEqual(istekler.count, 1)
+        try await ben.isle(SosyalIslemi.istekIptal(istekler[0], calisan: c))
+        let _i = try await ben.belge("postIstekleri/\(istekler[0].id)")
+        XCTAssertEqual(PostIstegi(kimlik: istekler[0].id, alanlar: try XCTUnwrap(_i)).durum, "iptal")
+    }
 }
