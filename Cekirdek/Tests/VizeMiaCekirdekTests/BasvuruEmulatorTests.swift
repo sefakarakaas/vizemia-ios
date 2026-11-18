@@ -783,6 +783,76 @@ final class BasvuruEmulatorTests: XCTestCase {
                                                 mevcut: [], calisan: c).durum, "Elle — danışman gönderir — elle gönderilecek.")
     }
 
+    func testGrup() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("grp\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("grp\(ek)"), "displayName": .metin("Ezgi Danışman"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi(Calisan.varsayilanIzinler["writer"]!.map { .metin($0) }),
+        ])])
+        let st: [(String, [String: FSDeger])] = [("potansiyel", statuBelgesi("Potansiyel Müşteri", musteri: "Görüşme", sira: 10, silme: 60))]
+        for (id, a) in st { try await owner.belgeYaz("statuses/\(id)", alanlar: a) }
+        let statuler = st.map { Statu(kimlik: $0.0, alanlar: $0.1) }
+        let o = try await e.kimlik.giris(kullaniciAdi: "grp\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let bugun = Tr.bugun()
+        func ac(_ ad: String, _ soyad: String, grup: GrupTohumu? = nil) async throws -> Basvuru {
+            let veri: [String: FSDeger] = ["firstName": .metin(ad), "lastName": .metin(soyad), "entryDate": .metin(Tr.gunEkle(bugun, 40)),
+                                           "phone": .metin("+905321112233")]
+            let y = try XCTUnwrap(BasvuruIslemi.olustur(veri: veri, ulkeId: "italya", ulke: nil, randevu: "", acilis: bugun, bugun: bugun,
+                                                        statuler: statuler, calisan: c, grup: grup))
+            try await ben.isle(y.yazimlar)
+            let _a = try await ben.belge("applications/\(y.kimlik)")
+            return Basvuru(kimlik: y.kimlik, alanlar: try XCTUnwrap(_a))
+        }
+        func oku(_ b: Basvuru) async throws -> Basvuru {
+            let _a = try await ben.belge("applications/\(b.kimlik)")
+            return Basvuru(kimlik: b.kimlik, alanlar: try XCTUnwrap(_a))
+        }
+
+        // "Gruba kişi ekle": ilk kişi grupsuzdu → yeni başvuruyla aynı yazımda gruba alınır.
+        let ilk = try await ac("AYŞE", "ÖZTÜRK")
+        let _f = try await ben.belge("applications/\(ilk.kimlik)/private/data")
+        let tohum = GrupTohumu(ilk, form: try XCTUnwrap(_f?["form"]?.haritaDegeri), randevu: "")
+        XCTAssertEqual(tohum.ad, "Öztürk grubu")
+        XCTAssertEqual(tohum.degerler.keys.sorted(), ["entryDate"])
+        XCTAssertEqual(tohum.iletisim["phone"], "+905321112233")
+        let ikinci = try await ac("MEHMET", "ÖZTÜRK", grup: tohum)
+        let ilk2 = try await oku(ilk)
+        XCTAssertEqual(ilk2.grupId, ikinci.grupId)
+        XCTAssertTrue(GrupIsi.gecerliId(ikinci.grupId))
+
+        // Mevcut başvuruyu takip koduyla gruba ekle; başka gruptakini taşımadan önce sor.
+        let ucuncu = try await ac("CAN", "KAYA")
+        guard case let .tamam(y, ad) = GrupIsi.bagla(ilk2, hedef: ucuncu, calisan: c) else { return XCTFail() }
+        XCTAssertEqual(ad, "Öztürk grubu")
+        try await ben.isle(y)
+        let dorduncu = try await ac("ALİ", "VELİ")
+        let besinci = try await ac("ZEYNEP", "VELİ")
+        guard case let .tamam(y2, _) = GrupIsi.bagla(dorduncu, hedef: besinci, calisan: c) else { return XCTFail() }
+        try await ben.isle(y2)
+        let besinci2 = try await oku(besinci)
+        XCTAssertEqual(GrupIsi.bagla(ilk2, hedef: besinci2, calisan: c), .tasinsinMi(grupAdi: "Veli grubu"))
+        XCTAssertEqual(GrupIsi.bagla(ilk2, hedef: ilk2, calisan: c), .hata("Bu zaten açık olan başvuru."))
+
+        // Adı değiştir (bütün üyelerde), sonra çıkar: iki kişilik grupta kalan da çıkar.
+        let uyeler = try await ben.sorgu(koleksiyon: "applications", kosullar: [.esit("grupId", .metin(ilk2.grupId))], sinir: 50)
+            .map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+        XCTAssertEqual(uyeler.count, 3)
+        try await ben.isle(try XCTUnwrap(GrupIsi.adDegistir(ilk2, uyeler: uyeler, ad: "  Öztürk   ailesi ", calisan: c)))
+        let ucuncu2 = try await oku(ucuncu)
+        XCTAssertEqual(ucuncu2.grupAdi, "Öztürk ailesi")
+        let dorduncu2 = try await oku(dorduncu)
+        try await ben.isle(GrupIsi.cikar(dorduncu2, digerleri: [besinci2], calisan: c))
+        let besinci3 = try await oku(besinci), dorduncu3 = try await oku(dorduncu)
+        XCTAssertEqual(besinci3.grupId, "")
+        XCTAssertEqual(dorduncu3.grupAdi, "")
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

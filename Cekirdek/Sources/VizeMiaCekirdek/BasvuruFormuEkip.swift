@@ -349,7 +349,7 @@ extension BasvuruIslemi {
     public static func olustur(
         veri: [String: FSDeger], ulkeId: String, ulke: Ulke?, randevu: String, acilis: String, bugun: String,
         statuler: [Statu], calisan c: Calisan, kontrolNotu: String = "", simdi: Date = Date(),
-        kimlik: String = FirestoreIstemci.yeniKimlik(), kod: String? = nil
+        kimlik: String = FirestoreIstemci.yeniKimlik(), kod: String? = nil, grup: GrupTohumu? = nil
     ) -> YeniBasvuru? {
         // İlk statü: şartı olmayan ve son adım olmayan ilk statü (ör. potansiyel müşteri).
         guard let ilk = statuler.first(where: { $0.gerekenler.isEmpty && !$0.son }) ?? statuler.first else { return nil }
@@ -379,6 +379,10 @@ extension BasvuruIslemi {
         b["assignedName"] = .metin(String(c.gorunenAd.prefix(80)))
         b["createdBy"] = .metin(c.uid)
         b["updatedBy"] = .metin(c.uid)
+        if let g = grup {
+            b["grupId"] = .metin(g.id)
+            b["grupAdi"] = .metin(g.ad)
+        }
         var y: [FirestoreIstemci.Yazim] = [
             .olustur(yol: "trackingCodes/\(kod)", alanlar: ["appId": .metin(kimlik)], zaman: ["createdAt"]),
             .olustur(yol: yol, alanlar: b, zaman: zaman),
@@ -391,6 +395,12 @@ extension BasvuruIslemi {
         y.append(.yaz(yol: "takip/\(a.takipId)", alanlar: TakipBelgesi.alanlar(basvuru: taslak, statu: ilk, statuler: statuler, notlar: []),
                       zaman: ["updatedAt"]))
         if !pasaport.isEmpty { y.append(.diziyeEkle(yol: "lookup/\(a.pasaportOzeti)", alan: "apps", degerler: [.metin(kimlik)])) }
+        // İlk kişi henüz grupta değildi: aynı yazımda gruba alınır.
+        if let g = grup, g.kaynakGrubaAlinsin, !g.kaynakId.isEmpty {
+            y.append(.guncelle(yol: "applications/\(g.kaynakId)", alanlar: [
+                "grupId": .metin(g.id), "grupAdi": .metin(g.ad), "updatedBy": .metin(c.uid),
+            ], zaman: ["updatedAt"]))
+        }
         y.append(.olustur(yol: "\(yol)/log/\(FirestoreIstemci.yeniKimlik())",
                           alanlar: GecmisSatiri.alanlar(tur: "created", metin: "Başvuru oluşturuldu (\(ilk.ad))", statu: ilk, calisan: c),
                           zaman: ["at"]))

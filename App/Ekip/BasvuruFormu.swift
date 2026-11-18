@@ -14,8 +14,8 @@ struct BasvuruFormuEkrani: View {
     @State private var sorun: String?
     @State private var basari = 0
 
-    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil) {
-        _veri = State(initialValue: BasvuruFormuVerisi(kimlik: kimlik, talepYolu: talepYolu, arsivId: arsivId))
+    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil, grupKaynak: String? = nil) {
+        _veri = State(initialValue: BasvuruFormuVerisi(kimlik: kimlik, talepYolu: talepYolu, arsivId: arsivId, grupKaynak: grupKaynak))
     }
 
     private var ulkeAdi: String { icerik.akis.tumUlkeler.first { $0.slug == veri.ulke }?.ad ?? "" }
@@ -51,6 +51,21 @@ struct BasvuruFormuEkrani: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Tema.mavi)
                         .kartSoluk()
+                }
+                if let g = veri.grup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Gruba kişi ekleniyor: \(g.ad)", systemImage: "person.3.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(Tema.lacivert)
+                        Text("\(g.kaynakAd) ile aynı ülke, randevu tarihi ve yolculuk bilgileri seçili geldi. Kişisel bilgileri (ad, soyad, pasaport, TCKN, doğum tarihi…) bu kişi için girin.")
+                            .font(.caption).foregroundStyle(Tema.govde)
+                        Button("İletişim bilgisini ilk kişiden kopyala") {
+                            veri.iletisimKopyala()
+                        }
+                        .buttonStyle(KucukDugme())
+                        .disabled(g.iletisim.isEmpty)
+                    }
+                    .kartSoluk()
                 }
                 if veri.arsivId != nil {
                     Label("Arşivden: ad, soyad, telefon, e-posta ve ülke dolduruldu. TCKN, pasaport ve evraklar silindiği için yeniden girilmeli.",

@@ -117,7 +117,9 @@ struct BasvuruDetayi: View {
                 notlarKarti(b).belirme(6)
                 takipKarti(b).belirme(7)
                 bilgiKarti(b).belirme(8)
-                if veri.grup.count > 1 { grupKarti(b).belirme(9) }
+                if GrupIsi.gecerliId(b.grupId) || ekip.yapabilir("app.edit") || ekip.yapabilir("app.create") {
+                    GrupKarti(veri: veri, b: b, baglam: baglam(b)).belirme(9)
+                }
                 gecmisKarti.belirme(10)
                 Text("İyi niyet mektubu ve konsolosluk formu (PDF / portal) şimdilik panelden yapılır.")
                     .font(.caption)
@@ -608,27 +610,6 @@ struct BasvuruDetayi: View {
     }
 
     // MARK: Grup
-
-    private func grupKarti(_ b: Basvuru) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("\(b.grupAdi.isEmpty ? "Grup" : b.grupAdi) · \(veri.grup.count) kişi", systemImage: "person.3.fill")
-                .font(.headline)
-                .foregroundStyle(Tema.lacivert)
-            ForEach(veri.grup.filter { $0.kimlik != b.kimlik }) { u in
-                NavigationLink(value: EkipRota.basvuru(u.kimlik)) {
-                    HStack {
-                        Text(u.adSoyad).font(.subheadline.weight(.semibold)).foregroundStyle(Tema.lacivert)
-                        Spacer()
-                        Etiket(metin: ekip.statuSozlugu[u.statuId]?.ad ?? u.statuAdi, renk: statuRengi(ekip.statuSozlugu[u.statuId]))
-                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Tema.silik)
-                    }
-                    .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .kart()
-    }
 
     // MARK: Geçmiş
 

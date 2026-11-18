@@ -214,7 +214,7 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler, epostalar, mesajlar }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler, epostalar, mesajlar, grup }
 
     /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
     private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler, .epostalar, .mesajlar]) async {
@@ -262,7 +262,12 @@ final class BasvuruDetayVerisi {
     private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci, _ ekip: EkipOturumu) async {
         let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler, .epostalar, .mesajlar])
         if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
-        if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
+        if parcalar.contains(.basvuru) || parcalar.contains(.grup), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
+        if parcalar.contains(.grup), let b = basvuru {
+            if b.grupId.isEmpty { grup = [] } else if let l = try? await f.sorgu(koleksiyon: "applications", kosullar: [.esit("grupId", .metin(b.grupId))], sinir: 50) {
+                grup = l.map { Basvuru(kimlik: $0.kimlik, alanlar: $0.alanlar) }
+            }
+        }
         if parcalar.contains(.pasaport), let a = try? await f.belge("\(yol)/private/passport") {
             pasaport = PasaportKontrolu(alanlar: a)
         }
@@ -375,6 +380,42 @@ final class BasvuruDetayVerisi {
     func epostaIptal(_ m: EpostaKaydi, ekip: EkipOturumu) async -> String? {
         guard let c = ekip.calisan else { return "Oturum bulunamadı." }
         return await isle(EpostaIslemi.iptal(m, calisan: c), ekip, yenile: [.epostalar])
+    }
+
+    // MARK: - Grup
+
+    enum GrupSonucu { case tamam(String), sor(String), hata(String) }
+
+    /// Takip koduyla bulunan başvuruyu bu başvuruyla gruplar (panel: "Mevcut başvuruyla grupla").
+    func grupBagla(kod: String, tasimaOnayli: Bool, ekip: EkipOturumu) async -> GrupSonucu {
+        guard let b = basvuru, let c = ekip.calisan else { return .hata("Oturum bulunamadı.") }
+        guard let k = BasvuruListesi.takipKodu(kod) else { return .hata("Geçerli bir takip kodu yazın.") }
+        do {
+            let f = try await ekip.istemci()
+            guard let h = try await f.sorgu(koleksiyon: "applications", kosullar: [.esit("trackingCode", .metin(k))], sinir: 1).first else {
+                return .hata("Bu takip koduyla başvuru bulunamadı.")
+            }
+            switch GrupIsi.bagla(b, hedef: Basvuru(kimlik: h.kimlik, alanlar: h.alanlar), tasimaOnayli: tasimaOnayli, calisan: c) {
+            case .hata(let m): return .hata(m)
+            case .tasinsinMi(let ad): return .sor(ad)
+            case .tamam(let y, let ad):
+                if let hata = await isle(y, ekip, yenile: [.grup]) { return .hata(hata) }
+                return .tamam("\"\(ad)\" grubu güncellendi.")
+            }
+        } catch {
+            return .hata(HataAciklamasi.metin(error, "Başvuru aranamadı. İnternet bağlantınızı kontrol edin."))
+        }
+    }
+
+    func grupAdiDegistir(_ ad: String, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        guard let y = GrupIsi.adDegistir(b, uyeler: grup, ad: ad, calisan: c) else { return "Grup adı boş olamaz ya da değişmedi." }
+        return await isle(y, ekip, yenile: [.grup])
+    }
+
+    func gruptanCikar(ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        return await isle(GrupIsi.cikar(b, digerleri: grup.filter { $0.kimlik != b.kimlik }, calisan: c), ekip, yenile: [.grup])
     }
 
     // MARK: - Müşteri formu

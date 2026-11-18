@@ -10,6 +10,9 @@ final class BasvuruFormuVerisi {
     let talepYolu: String?
     /// Müşteri arşivinden yeniden başvuru: arşiv kaydının kimliği.
     let arsivId: String?
+    /// "Gruba kişi ekle": ilk kişinin başvurusu.
+    let grupKaynak: String?
+    private(set) var grup: GrupTohumu?
 
     var ulke = ""
     var randevu: Date?
@@ -31,10 +34,18 @@ final class BasvuruFormuVerisi {
     private(set) var hata: String?
     var kaydediliyor = false
 
-    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil) {
+    init(kimlik: String?, talepYolu: String?, arsivId: String? = nil, grupKaynak: String? = nil) {
         self.kimlik = kimlik
         self.talepYolu = talepYolu
         self.arsivId = arsivId
+        self.grupKaynak = grupKaynak
+    }
+
+    /// "İletişim bilgisini ilk kişiden kopyala" (telefon, e-posta, adres ve bildirim kanalları).
+    func iletisimKopyala() {
+        guard let g = grup else { return }
+        for (k, v) in g.iletisim { degerler[k] = v }
+        if let k = g.kanallar { korunan["channels"] = k }
     }
 
     var duzenleme: Bool { kimlik != nil }
@@ -67,6 +78,28 @@ final class BasvuruFormuVerisi {
                 }
             } catch {
                 hata = "Arşiv kaydı okunamadı."
+                return
+            }
+        }
+        if let kaynak = grupKaynak {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-ornek-ekip"), let b = OrnekEkip.basvurular.first(where: { $0.kimlik == kaynak }) {
+                let g = GrupTohumu(b, form: ["phone": .metin("+905000000011")], randevu: "")
+                grup = g; ulke = g.ulke; hazir = true; return
+            }
+            #endif
+            do {
+                let f = try await ekip.istemci()
+                guard let a = try await f.belge("applications/\(kaynak)") else { hata = "İlk kişinin başvurusu bulunamadı."; return }
+                let b = Basvuru(kimlik: kaynak, alanlar: a)
+                let form: [String: FSDeger] = ((try? await f.belge("applications/\(kaynak)/private/data")) ?? nil)?["form"]?.haritaDegeri ?? [:]
+                let g = GrupTohumu(b, form: form, randevu: b.randevu.map { Tr.isoGun($0, takvim: Tr.takvim) } ?? "")
+                grup = g
+                ulke = g.ulke
+                randevu = b.randevu
+                for (k, v) in g.degerler { degerler[k] = v }
+            } catch {
+                hata = HataAciklamasi.metin(error, "İlk kişinin başvurusu okunamadı.")
                 return
             }
         }
@@ -163,7 +196,8 @@ final class BasvuruFormuVerisi {
             let kontrol = talep.map { _ in eksikler(r.veri) } ?? ""
             for deneme in 0..<5 {
                 guard let y = BasvuruIslemi.olustur(veri: r.veri, ulkeId: ulke, ulke: ulkeKaydi, randevu: randevuIso, acilis: acilisIso,
-                                                    bugun: bugun, statuler: ekip.statuler, calisan: c, kontrolNotu: kontrol) else {
+                                                    bugun: bugun, statuler: ekip.statuler, calisan: c, kontrolNotu: kontrol,
+                                                    grup: grup) else {
                     return (nil, "Henüz statü tanımlanmamış. Yönetici önce Ayarlar'dan statüleri oluşturmalı.")
                 }
                 do {
