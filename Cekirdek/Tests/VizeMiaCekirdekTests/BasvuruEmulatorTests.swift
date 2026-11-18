@@ -470,4 +470,88 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTAssertEqual(pk.onaylayan, "Ezgi Danışman")
         XCTAssertNotNil(pk.onayZamani)
     }
+
+    /// Kasa: harcama (fişli), müşteri harcaması (geçmişe de), döviz çevrimi, rutin ödeme ve vadesi, iptal.
+    func testKasa() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("kasa\(ek)", "gizli-sifre-1")
+        let yon = try await e.hesapAc("yonetici\(ek)", "gizli-sifre-2")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("kasa\(ek)"), "displayName": .metin("Kasa Sorumlusu"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("employees/\(yon)", alanlar: [
+            "username": .metin("yonetici\(ek)"), "displayName": .metin("Sefa"), "role": .metin("admin"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["kasa.view", "kasa.gider", "kasa.rutin"]).map { .metin($0) }),
+        ])])
+        let appId = "ksa\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-13\(ek)"), "firstName": .metin("CAN"), "lastName": .metin("ER"), "statusId": .metin("potansiyel"),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "kasa\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let bugun = Tr.bugun()
+
+        // 1) Genel harcama, fişli (fiş 2 parça).
+        var g = KasaGirdisi()
+        g.kategori = "Kırtasiye"; g.tutar = 120.5; g.tarih = bugun; g.aciklama = "Kalem"
+        let fis = HazirDosya(ad: "fis.jpg", mime: "image/jpeg", bayt: Data(repeating: 7, count: Dosya.parcaBoyutu + 10))
+        let k1 = KasaIslemi.kaydet(g, fis: fis, calisan: c)
+        try await ben.isle(k1.yazimlar)
+        let _h1 = try await ben.belge("kasa/\(k1.id)")
+        let h1 = KasaHareketi(kimlik: k1.id, alanlar: try XCTUnwrap(_h1))
+        XCTAssertEqual(h1.tutar, 120.5)
+        XCTAssertFalse(h1.fisId.isEmpty)
+
+        // 2) Müşteri harcaması başvuru ekranından: geçmişe de yazılır.
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+        var mg = KasaGirdisi()
+        mg.kapsam = "musteri"; mg.kategori = "Fotokopi"; mg.tutar = 25; mg.tarih = bugun
+        mg.appId = appId; mg.takipKodu = b.takipKodu; mg.musteriAd = b.adSoyad
+        try await ben.isle(KasaIslemi.kaydet(mg, fis: nil, basvuru: b, calisan: c).yazimlar)
+        let musteri = try await ben.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(appId)), .esit("kapsam", .metin("musteri"))], sinir: 10)
+        XCTAssertEqual(musteri.count, 1)
+
+        // 3) Döviz çevrimi.
+        var cv = KasaGirdisi()
+        cv.tur = "cevrim"; cv.kategori = "Döviz çevrimi"; cv.tutar = 50; cv.paraBirimi = "EUR"; cv.hedefTutar = 2425; cv.hedefParaBirimi = "TRY"
+        cv.buro = "Kızılay  Döviz"; cv.tarih = bugun
+        try await ben.isle(KasaIslemi.kaydet(cv, fis: nil, calisan: c).yazimlar)
+
+        // 4) Rutin ödeme ve bugünkü vadesi "ödendi"; aynı vade ikinci kez yazılamaz.
+        var r = RutinOdeme()
+        r.ad = "Kira"; r.kategori = "Kira"; r.tutar = 20000; r.siklik = "aylik"; r.gun = 1; r.baslangic = bugun
+        let rk = KasaIslemi.rutinKaydet(r, calisan: c)
+        try await ben.isle(rk.yazimlar)
+        var v = KasaGirdisi()
+        v.kategori = "Kira"; v.tutar = 20000; v.yontem = "havale"; v.tarih = bugun; v.aciklama = "Kira · vade"
+        v.rutinId = rk.id; v.rutinVade = bugun
+        let vid = RutinOdeme.kasaId(rk.id, bugun)
+        try await ben.isle(KasaIslemi.kaydet(v, fis: nil, kimlik: vid, calisan: c).yazimlar)
+        do { try await ben.isle(KasaIslemi.kaydet(v, fis: nil, kimlik: vid, calisan: c).yazimlar); XCTFail("vade iki kez ödenmemeli") } catch {}
+        var durdur = r; durdur.id = rk.id; durdur.aktif = false
+        try await ben.isle(KasaIslemi.rutinKaydet(durdur, kaydaYaz: false, calisan: c).yazimlar)
+
+        // 5) İptal: yalnız yönetici.
+        do { try await ben.isle(KasaIslemi.iptal(h1, neden: "yanlış", calisan: c)); XCTFail("yönetici değil") } catch {}
+        let yo = try await e.kimlik.giris(kullaniciAdi: "yonetici\(ek)", sifre: "gizli-sifre-2")
+        let yIst = e.istemci(yo.belirtec)
+        let _y = try await yIst.belge("employees/\(yon)")
+        let yc = Calisan(uid: yon, belge: try XCTUnwrap(_y), izinBelgesi: nil)
+        try await yIst.isle(KasaIslemi.iptal(h1, neden: "İki kez girildi", calisan: yc))
+        let _h1b = try await ben.belge("kasa/\(k1.id)")
+        let iptalli = KasaHareketi(kimlik: k1.id, alanlar: try XCTUnwrap(_h1b))
+        XCTAssertTrue(iptalli.iptal)
+        XCTAssertEqual(iptalli.iptalAd, "Sefa")
+
+        // Rapor sorgusu: bugünün hareketleri.
+        let l = try await ben.sorgu(koleksiyon: "kasa", kosullar: [.enAz("tarih", .metin(bugun)), .enCok("tarih", .metin(bugun))],
+                                    sirala: ("tarih", .azalan), sinir: 100)
+        let oz = KasaOzeti(l.map { KasaHareketi(kimlik: $0.kimlik, alanlar: $0.alanlar) })
+        XCTAssertEqual(oz.sayi.iptal, 1)
+        XCTAssertEqual(oz.kasa["EUR"], -50)
+    }
 }

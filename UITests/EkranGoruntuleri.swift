@@ -96,8 +96,33 @@ final class EkranGoruntuleri: XCTestCase {
         bekle(1)
         cek("ekip-hesap")
 
-        // Başvurular: ana sayfa → Müşteriler → Başvurular → ayrıntı.
+        // Kasa: ana sayfa → Kasa (tek ekranlı bölüm) → rapor, harcama formu.
         sekme("Ana Sayfa")
+        let kasa = dugme("Kasa")
+        if !gorunur(kasa) { surukle(0.80, 0.30) }
+        kasa.tap()
+        XCTAssertTrue(metin("Ödenecek rutin ödemeler").waitForExistence(timeout: 10), "Kasa açılmadı")
+        bekle(1)
+        cek("ekip-kasa")
+        for i in 2...4 {
+            surukle(0.85, 0.25)
+            bekle(0.6)
+            cek("ekip-kasa-\(i)")
+        }
+        surukle(0.20, 0.90)
+        surukle(0.20, 0.90)
+        let harcama = app.buttons["Harcama"].firstMatch
+        if harcama.waitForExistence(timeout: 4) {
+            harcama.tap()
+            bekle(1)
+            cek("ekip-kasa-harcama")
+            app.buttons["Vazgeç"].firstMatch.tap()
+            bekle(1)
+        }
+        geri()
+        bekle(1)
+
+        // Başvurular: ana sayfa → Müşteriler → Başvurular → ayrıntı.
         let musteriler = dugme("Müşteriler")
         if !gorunur(musteriler) { surukle(0.80, 0.30) }
         musteriler.tap()

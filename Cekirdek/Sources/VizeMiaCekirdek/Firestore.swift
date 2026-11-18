@@ -149,6 +149,7 @@ public struct FirestoreIstemci {
         public static func icinde(_ a: String, _ d: [FSDeger]) -> Kosul { Kosul(a, "IN", .dizi(d)) }
         public static func enAz(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "GREATER_THAN_OR_EQUAL", d) }
         public static func kucuk(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "LESS_THAN", d) }
+        public static func enCok(_ a: String, _ d: FSDeger) -> Kosul { Kosul(a, "LESS_THAN_OR_EQUAL", d) }
 
         var json: [String: Any] {
             ["fieldFilter": ["field": ["fieldPath": alan], "op": islem, "value": deger.json]]

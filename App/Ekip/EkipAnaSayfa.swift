@@ -28,7 +28,7 @@ struct EkipBolumu: Identifiable {
             Oge(id: "destek", ad: "Destek talepleri", simge: "lifepreserver.fill", izin: "support.view", yonetici: false, rota: .destekler),
         ]),
         EkipBolumu(id: "kasa", ad: "Kasa", simge: "turkishlirasign.circle.fill", ogeler: [
-            Oge(id: "kasa", ad: "Kasa ve raporlar", simge: "turkishlirasign.circle.fill", izin: "kasa.view|kasa.gider|kasa.rutin", yonetici: false, rota: nil),
+            Oge(id: "kasa", ad: "Kasa ve raporlar", simge: "turkishlirasign.circle.fill", izin: "kasa.view|kasa.gider|kasa.rutin", yonetici: false, rota: .kasa),
         ]),
         EkipBolumu(id: "iletiler", ad: "İletiler", simge: "envelope.fill", ogeler: [
             Oge(id: "bildirimler", ad: "Bildirimler (WhatsApp)", simge: "message.fill", izin: "app.sensitive", yonetici: false, rota: nil),

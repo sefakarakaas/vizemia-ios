@@ -16,6 +16,8 @@ enum EkipRota: Hashable {
     case basvuruDuzenle(String)
     case arsiv
     case arsivdenBasvuru(String)    // arşiv kaydının kimliği: yeni başvuru formu onunla dolu
+    case kasa
+    case kasaRutinler
     case bolum(String)          // ana sayfa kutusu: "musteriler", "kasa" …
     case yakinda(String)        // henüz uygulamada olmayan panel ekranı
 }
@@ -75,6 +77,8 @@ struct EkipKok: View {
                     case .basvuruDuzenle(let id): BasvuruFormuEkrani(kimlik: id, talepYolu: nil)
                     case .arsiv: ArsivEkrani()
                     case .arsivdenBasvuru(let id): BasvuruFormuEkrani(kimlik: nil, talepYolu: nil, arsivId: id)
+                    case .kasa: KasaEkrani()
+                    case .kasaRutinler: RutinOdemelerEkrani()
                     case .bolum(let id): BolumEkrani(id: id)
                     case .yakinda(let ad): YakindaEkrani(ad: ad)
                     }

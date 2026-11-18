@@ -148,6 +148,8 @@ final class BasvuruDetayVerisi {
     private(set) var fiyat: Fiyat?
     /// Görebildiği belgeler (randevu kağıdı, fiş, diğer: app.sensitive; dekont: app.payment).
     private(set) var dosyalar: [DosyaBilgisi] = []
+    /// Müşteri için yapılan harcamalar (kasa; görmek için kasa.view ya da app.payment).
+    private(set) var giderler: [KasaHareketi] = []
 
     init(kimlik: String) { self.kimlik = kimlik }
 
@@ -205,11 +207,15 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler }
 
     /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
-    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar]) async {
+    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler]) async {
         let odeme = ekip.yapabilir("app.payment"), hassas = ekip.yapabilir("app.sensitive")
+        if parcalar.contains(.giderler) && (ekip.yapabilir("kasa.view") || odeme),
+           let l = try? await f.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(kimlik)), .esit("kapsam", .metin("musteri"))], sinir: 200) {
+            giderler = l.map { KasaHareketi(kimlik: $0.kimlik, alanlar: $0.alanlar) }.filter { $0.tur == "gider" }.sorted { $0.tarih > $1.tarih }
+        }
         if odeme && parcalar.contains(.odemeler),
            let l = try? await f.sorgu(koleksiyon: "odemeler", sirala: ("at", .azalan), sinir: 50, ust: yol) {
             odemeler = l.map { Odeme(kimlik: $0.kimlik, alanlar: $0.alanlar) }
@@ -230,7 +236,7 @@ final class BasvuruDetayVerisi {
 
     /// İşlemden sonra yalnız değişen parçalar yeniden okunur.
     private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci, _ ekip: EkipOturumu) async {
-        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar])
+        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler])
         if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
         if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
         if parcalar.contains(.pasaport), let a = try? await f.belge("\(yol)/private/passport") {
@@ -294,6 +300,18 @@ final class BasvuruDetayVerisi {
         let kanal = [r.sms ? "SMS" : "", r.eposta ? "e-posta" : ""].filter { !$0.isEmpty }.joined(separator: " ve ")
         return (true, kanal.isEmpty ? "Statü güncellendi."
                 : "Statü güncellendi. Müşteriye \(kanal) 30 dk sonra gider; bu sürede statü değişirse gitmez.")
+    }
+
+    /// Müşteri harcaması: kasa defterine (fişiyle) ve başvurunun geçmişine tek yazımda.
+    func giderEkle(_ g: KasaGirdisi, fis: HazirDosya?, ekip: EkipOturumu) async -> String? {
+        guard let b = basvuru, let c = ekip.calisan else { return "Oturum bulunamadı." }
+        let k = KasaIslemi.kaydet(g, fis: fis, basvuru: b, calisan: c)
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return nil }
+        #endif
+        let h = await isle(k.yazimlar, ekip, yenile: [.giderler, .gecmis])
+        if h == nil { ekip.kasaBildir(k.id) }
+        return h
     }
 
     /// Formdaki metin değerleri (pasaport karşılaştırması için).
@@ -497,6 +515,10 @@ final class BasvuruDetayVerisi {
             "byName": .metin("Sefa Karakaş"), "at": .zaman(simdi.addingTimeInterval(-2 * 86_400))])]
         fiyat = Fiyat(alanlar: ["tutar": .tam(4500), "paraBirimi": .metin("TRY"), "aciklama": .metin("Hizmet bedeli, harç hariç"),
                                 "byName": .metin("Sefa Karakaş"), "updatedAt": .zaman(simdi.addingTimeInterval(-3 * 86_400))])
+        giderler = [KasaHareketi(kimlik: "g1", alanlar: [
+            "tur": .metin("gider"), "kapsam": .metin("musteri"), "kategori": .metin("Fotokopi"), "tutar": .ondalik(25.5),
+            "paraBirimi": .metin("TRY"), "yontem": .metin("nakit"), "tarih": .metin(Tr.bugun(simdi)), "byName": .metin("Ezgi"),
+            "at": .zaman(simdi.addingTimeInterval(-5400)), "iptal": .mantik(false)])]
         dosyalar = [DosyaBilgisi(kimlik: "d1", alanlar: ["tur": .metin("diger"), "ad": .metin("davet-mektubu.pdf"),
                                                         "mime": .metin("application/pdf"), "boyut": .tam(412_000), "parca": .tam(1),
                                                         "byName": .metin("Ezgi"), "at": .zaman(simdi.addingTimeInterval(-86_400))])]

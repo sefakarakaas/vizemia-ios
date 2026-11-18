@@ -26,6 +26,8 @@ final class EkipVerisi {
     private var takvimYuklemesi: Date?
     /// Başvurular listesi: ekrandan çıkıp girince yeniden okunmasın diye burada.
     let basvurular = BasvuruListesiVerisi()
+    /// Kasa raporu ve rutin ödemeler (Kasa ekranı ile rutin ödemeler ekranı aynı veriyi kullanır).
+    let kasa = KasaVerisi()
     /// Bir ekrandan ötekine taşınan bilgi (ör. kaydedilen formdan sonra ayrıntıda gösterilir).
     var sonMesaj: String?
 

@@ -101,6 +101,9 @@ struct BasvuruDetayi: View {
                 if ekip.yapabilir("app.payment") { OdemelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
                 if ekip.yapabilir("app.sensitive") { BelgelerKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5) }
                 if ekip.yapabilir("app.sensitive") { PasaportKontrolKarti(veri: veri, baglam: baglam(b)).belirme(5) }
+                if ekip.yapabilir("kasa.view") || ekip.yapabilir("app.payment") || ekip.yapabilir("kasa.gider") {
+                    MusteriGiderleriKarti(veri: veri, b: b, baglam: baglam(b)).belirme(5)
+                }
                 evrakKarti(b).belirme(5)
                 if !b.konsTakipKodu.isEmpty || ekip.yapabilir("app.edit") {
                     KonsoloslukKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)

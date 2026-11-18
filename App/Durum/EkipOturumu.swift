@@ -35,6 +35,8 @@ final class EkipOturumu {
     private(set) var smsAyari = SmsAyari(belge: nil)
     /// Kasa bildirimi (Ayarlar → Kasa ve raporlar → servis adresi): ödeme girilince ekibe haber.
     private(set) var kasaServisUrl = ""
+    /// Ayarlar → Kasa ve raporlar: gider kategorileri, döviz büroları, rapor saati.
+    private(set) var kasaAyari = KasaAyari()
     /// Ayarlar → Randevu konumları (harita bağlantıları) ve otomatik bildirim ayarı.
     private(set) var konumlar = KonumAyari(belge: nil)
     private(set) var bildirimAyari = BildirimAyari(belge: nil)
@@ -147,7 +149,9 @@ final class EkipOturumu {
             bildirimAyari = BildirimAyari(belge: (try? await bildirim) ?? nil)
             let ulkeler = ((try? await formlar) ?? nil)?["countries"]?.haritaDegeri ?? [:]
             ulkeFormlari = ulkeler.compactMapValues { $0.haritaDegeri.map { UlkeFormu(alanlar: $0) } }
-            let k = ((try? await kasa) ?? nil)?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
+            let kasaBelgesi: [String: FSDeger]? = (try? await kasa) ?? nil
+            kasaAyari = KasaAyari(alanlar: kasaBelgesi)
+            let k = kasaBelgesi?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
             kasaServisUrl = k.range(of: "^https://script\\.google\\.com/macros/s/[\\w-]+/exec$", options: .regularExpression) != nil ? k : ""
             durum = .acik
             if let s = try? await f.sorgu(koleksiyon: "statuses", sinir: 100) {
