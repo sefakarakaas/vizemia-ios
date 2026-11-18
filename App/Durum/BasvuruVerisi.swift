@@ -152,6 +152,8 @@ final class BasvuruDetayVerisi {
     private(set) var giderler: [KasaHareketi] = []
     /// Bu müşteriye giden mailler (eposta.send ya da app.sensitive).
     private(set) var epostalar: [EpostaKaydi] = []
+    /// SMS ve WhatsApp geçmişi (sms/ ve mesajKaydi/).
+    private(set) var mesajlar: [MesajSatiri] = []
 
     init(kimlik: String) { self.kimlik = kimlik }
 
@@ -209,15 +211,27 @@ final class BasvuruDetayVerisi {
     static let gecmisSiniri = 60
     static let notSiniri = 100
 
-    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler, epostalar }
+    enum Parca { case basvuru, gecmis, notlar, ustNotlar, odemeler, fiyat, dosyalar, pasaport, giderler, epostalar, mesajlar }
 
     /// Ödemeler, fiyat ve belge bilgileri (baytlar açılınca indirilir).
-    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler, .epostalar]) async {
+    private func ekleriYukle(_ ekip: EkipOturumu, _ f: FirestoreIstemci, _ parcalar: Set<Parca> = [.odemeler, .fiyat, .dosyalar, .giderler, .epostalar, .mesajlar]) async {
         let odeme = ekip.yapabilir("app.payment"), hassas = ekip.yapabilir("app.sensitive")
         if parcalar.contains(.epostalar) && (ekip.yapabilir("eposta.send") || hassas),
            let l = try? await f.sorgu(koleksiyon: "eposta", kosullar: [.esit("appId", .metin(kimlik))], sinir: 50) {
             epostalar = l.map { EpostaKaydi(kimlik: $0.kimlik, alanlar: $0.alanlar) }
                 .sorted { ($0.olusma ?? .distantPast) > ($1.olusma ?? .distantPast) }
+        }
+        if parcalar.contains(.mesajlar) {
+            // Ekranda en çok 15 satır gösteriliyor; her kaynaktan 20 yeter.
+            var l: [MesajSatiri] = []
+            if let s = try? await f.sorgu(koleksiyon: "sms", kosullar: [.esit("appId", .metin(kimlik))], sinir: 20) {
+                l += s.map { MesajSatiri(sms: $0.kimlik, alanlar: $0.alanlar) }
+            }
+            if ekip.yapabilir("eposta.send") || hassas || ekip.yapabilir("lead.manage") || ekip.yapabilir("armut.view"),
+               let w = try? await f.sorgu(koleksiyon: "mesajKaydi", kosullar: [.esit("appId", .metin(kimlik))], sinir: 20) {
+                l += w.map { MesajSatiri(whatsapp: $0.kimlik, alanlar: $0.alanlar) }
+            }
+            mesajlar = MesajSatiri.birlestir(l)
         }
         if parcalar.contains(.giderler) && (ekip.yapabilir("kasa.view") || odeme),
            let l = try? await f.sorgu(koleksiyon: "kasa", kosullar: [.esit("appId", .metin(kimlik)), .esit("kapsam", .metin("musteri"))], sinir: 200) {
@@ -243,7 +257,7 @@ final class BasvuruDetayVerisi {
 
     /// İşlemden sonra yalnız değişen parçalar yeniden okunur.
     private func yenile(_ parcalar: Set<Parca>, _ f: FirestoreIstemci, _ ekip: EkipOturumu) async {
-        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler, .epostalar])
+        let ekler = parcalar.intersection([.odemeler, .fiyat, .dosyalar, .giderler, .epostalar, .mesajlar])
         if !ekler.isEmpty { await ekleriYukle(ekip, f, ekler) }
         if parcalar.contains(.basvuru), let a = try? await f.belge(yol) { basvuru = Basvuru(kimlik: kimlik, alanlar: a) }
         if parcalar.contains(.pasaport), let a = try? await f.belge("\(yol)/private/passport") {
@@ -335,6 +349,24 @@ final class BasvuruDetayVerisi {
         let gitti = await ekip.epostaHemen()
         if let f = try? await ekip.istemci() { await yenile([.epostalar], f, ekip) }
         return (true, gitti ? "Mail gönderildi." : "Mail sıraya alındı; 15 dakika içinde gider.")
+    }
+
+    /// Elle SMS: kuyruğa yazılır (30 dk bekletmeye girmez), SMS görevi gönderir.
+    func smsGonder(_ metin: String, ekip: EkipOturumu) async -> (tamam: Bool, mesaj: String) {
+        guard let b = basvuru, let c = ekip.calisan else { return (false, "Oturum bulunamadı.") }
+        guard let y = MusteriMesaji.sms(b, telefon: iletisim?.telefon ?? "", metin: metin, ayar: ekip.smsAyari, calisan: c) else {
+            return (false, "SMS sıraya alınamadı: metin boş ya da telefon hatalı.")
+        }
+        if let h = await isle(y, ekip, yenile: [.mesajlar]) { return (false, h) }
+        return (true, "SMS sıraya alındı; SMS görevi çalışınca gider.")
+    }
+
+    /// WhatsApp teyidinden sonra geçmiş yeniden okunur.
+    func mesajlariYenile(_ ekip: EkipOturumu) async {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { return }
+        #endif
+        if let f = try? await ekip.istemci() { await yenile([.mesajlar], f, ekip) }
     }
 
     func epostaIptal(_ m: EpostaKaydi, ekip: EkipOturumu) async -> String? {

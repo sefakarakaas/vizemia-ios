@@ -351,9 +351,11 @@ struct TalepDetayi: View {
                 }
                 .buttonStyle(AnaDugme(renk: Tema.olumlu))
                 .disabled(t.telefon.isEmpty)
-                Button {
-                    if let u = URL(string: "https://wa.me/\(t.whatsappNumarasi)") { UIApplication.shared.open(u) }
-                } label: {
+                // Hazır mesaj seçilince WhatsApp metin hazır açılır, dönünce
+                // "Gönderdim / Göndermedim" sorulur (panel: Talepler'deki seçici).
+                WaMenusu(telefon: t.telefon, degerler: WaSablonu.degerler(talep: t, benimAdim: ekip.calisan?.gorunenAd ?? "")) { m, id in
+                    WaTeyidi(talepId: t.kimlik, talepKol: t.tur.rawValue, telefon: t.telefon, ad: t.ad, metin: m, sablon: id)
+                } etiket: {
                     Label("WhatsApp", systemImage: "message.fill")
                 }
                 .buttonStyle(AnaDugme(renk: Tema.whatsapp))

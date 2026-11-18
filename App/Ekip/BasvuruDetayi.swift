@@ -109,7 +109,7 @@ struct BasvuruDetayi: View {
                     KonsoloslukKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
                 }
                 if ekip.yapabilir("eposta.send") || ekip.yapabilir("app.sensitive") {
-                    EpostaKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
+                    MusteriyeMesajKarti(veri: veri, b: b, baglam: baglam(b)).belirme(6)
                 }
                 notlarKarti(b).belirme(6)
                 takipKarti(b).belirme(7)

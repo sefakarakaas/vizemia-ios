@@ -579,6 +579,90 @@ final class BasvuruEmulatorTests: XCTestCase {
     }
 
     /// E-posta: başvurudan tek müşteriye, serbest adrese, sıradakini iptal; izinsiz yazım reddedilir.
+    func testMusteriMesaji() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("msj\(ek)", "gizli-sifre-1")
+        let lead = try await e.hesapAc("lead\(ek)", "gizli-sifre-2")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("msj\(ek)"), "displayName": .metin("Aleyna Yıldız"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("employees/\(lead)", alanlar: [
+            "username": .metin("lead\(ek)"), "displayName": .metin("Okur"), "role": .metin("reader"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]! + ["eposta.send", "app.status", "lead.manage"]).map { .metin($0) }),
+            "reader": .dizi(Calisan.varsayilanIzinler["reader"]!.map { .metin($0) }),
+        ])])
+        let appId = "msj\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: [
+            "trackingCode": .metin("2026-15\(ek)"), "firstName": .metin("AYŞE"), "lastName": .metin("KAYA"),
+            "countryName": .metin("İtalya"), "statusId": .metin("potansiyel"),
+        ])
+        let o = try await e.kimlik.giris(kullaniciAdi: "msj\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        let _b = try await ben.belge("applications/\(appId)")
+        let b = Basvuru(kimlik: appId, alanlar: try XCTUnwrap(_b))
+
+        // Hazır mesaj doldurma: WhatsApp yer tutucuları da dolar.
+        let d = MusteriMesaji.degerler(b, statu: "", benimAdim: c.gorunenAd)
+        let sablonlar = WaSablonu.liste(belge: nil)
+        XCTAssertEqual(sablonlar.map(\.id), ["ulasilamadi", "randevu-hatirlatma", "form-linki", "armut-bilgi", "armut-evrak"])
+        let metin = MusteriBildirimi.doldur(try XCTUnwrap(sablonlar.first { $0.id == "form-linki" }).metin, d)
+        XCTAssertTrue(metin.contains("https://vizemia.com/form?kod=2026-15\(ek)"))
+        XCTAssertEqual(EpostaIslemi.bosYerTutucular(metin), [])
+        XCTAssertEqual(MusteriBildirimi.doldur("{benim_ilk_adim}", d), "Aleyna")
+
+        // WhatsApp teyidi (mesajKaydi) ve elle SMS: sitenin kurallarıyla.
+        let t = WaTeyidi(appId: appId, telefon: "0532 123 45 67", ad: "Ayşe Kaya", metin: metin, sablon: "form-linki")
+        try await ben.isle(try XCTUnwrap(MusteriMesaji.waTeyidi(t, gonderildi: true, calisan: c)))
+        try await ben.isle(try XCTUnwrap(MusteriMesaji.waTeyidi(t, gonderildi: false, calisan: c)))
+        let acik = SmsAyari(belge: ["enabled": .mantik(true)])
+        XCTAssertNil(MusteriMesaji.sms(b, telefon: "0532 123 45 67", metin: "x", ayar: SmsAyari(belge: nil), calisan: c))
+        try await ben.isle(try XCTUnwrap(MusteriMesaji.sms(b, telefon: "05321234567", metin: "Sayın Ayşe, evraklarınız geldi.", ayar: acik, calisan: c)))
+
+        let w = try await ben.sorgu(koleksiyon: "mesajKaydi", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+        let s = try await ben.sorgu(koleksiyon: "sms", kosullar: [.esit("appId", .metin(appId))], sinir: 50)
+        let gecmis = MesajSatiri.birlestir(w.map { MesajSatiri(whatsapp: $0.kimlik, alanlar: $0.alanlar) }
+                                            + s.map { MesajSatiri(sms: $0.kimlik, alanlar: $0.alanlar) })
+        XCTAssertEqual(gecmis.count, 3)
+        XCTAssertEqual(Set(gecmis.map(\.durum)), ["Gönderildi", "Gönderilmedi", "Sırada"])
+        let smsMetni = try XCTUnwrap(gecmis.first { $0.kanal == .sms }).metin
+        XCTAssertEqual(smsMetni, "Sayin Ayse, evraklariniz geldi.")
+        XCTAssertEqual(s.first?.alanlar["tur"]?.metinDegeri, "elle")
+
+        // Hazır mesajları düzenleme (lead.manage): silinen sonradan-eklenen geri gelmez.
+        var yeni = sablonlar.filter { $0.id != "armut-evrak" }
+        yeni.append(WaSablonu(id: WaSablonu.geciciKimlik(), baslik: "Teşekkür", metin: "Teşekkürler {ad}"))
+        try await ben.isle(WaSablonu.kaydet(yeni, calisan: c))
+        let okunan = WaSablonu.liste(belge: try await ben.belge("settings/wa"))
+        XCTAssertEqual(okunan.count, 5)
+        XCTAssertFalse(okunan.contains { $0.id == "armut-evrak" })
+        XCTAssertEqual(okunan.last?.baslik, "Teşekkür")
+        XCTAssertEqual(okunan.last?.id, "tesekkur")
+
+        // Talepten açılan WhatsApp (lead.manage): kayıt talebe bağlı.
+        try await owner.belgeYaz("callback/cb\(ek)", alanlar: ["name": .metin("Mehmet Can"), "phone": .metin("05321234567"),
+                                                             "times": .dizi([.metin("10:00"), .metin("10:30")]), "status": .metin("new")])
+        let _tl = try await ben.belge("callback/cb\(ek)")
+        let talep = Talep(tur: .geriArama, kimlik: "cb\(ek)", alanlar: try XCTUnwrap(_tl))
+        let tm = WaSablonu.doldur(WaSablonu.varsayilanlar[1].metin, WaSablonu.degerler(talep: talep, benimAdim: c.gorunenAd))
+        XCTAssertTrue(tm.hasPrefix("Merhaba Mehmet, "))
+        XCTAssertTrue(tm.contains("10:00–11:00 aralığında"))
+        let tt = WaTeyidi(talepId: talep.kimlik, talepKol: "callback", telefon: talep.telefon, ad: talep.ad, metin: tm, sablon: "randevu-hatirlatma")
+        try await ben.isle(try XCTUnwrap(MusteriMesaji.waTeyidi(tt, gonderildi: true, calisan: c)))
+
+        // Yetkisi olmayan (reader) WhatsApp kaydı yazamaz.
+        let o2 = try await e.kimlik.giris(kullaniciAdi: "lead\(ek)", sifre: "gizli-sifre-2")
+        let okur = e.istemci(o2.belirtec)
+        let _c2 = try await okur.belge("employees/\(lead)")
+        let c2 = Calisan(uid: lead, belge: try XCTUnwrap(_c2), izinBelgesi: try await okur.belge("settings/permissions"))
+        do {
+            try await okur.isle(try XCTUnwrap(MusteriMesaji.waTeyidi(t, gonderildi: true, calisan: c2)))
+            XCTFail("okur yazabildi")
+        } catch let h as FirestoreHatasi { XCTAssertEqual(h, .izinYok) }
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

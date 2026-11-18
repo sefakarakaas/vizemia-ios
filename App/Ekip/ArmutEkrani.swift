@@ -193,7 +193,13 @@ struct ArmutKarti: View {
             if !k.telefon.isEmpty {
                 HStack(spacing: 8) {
                     if let u = URL(string: "tel:\(k.telefon)") { Link(k.telefon, destination: u).font(.subheadline.monospaced()) }
-                    if let u = URL(string: "https://wa.me/\(k.telefon.filter(\.isNumber))") {
+                    if ekip.yapabilir("armut.manage") {
+                        WaMenusu(telefon: k.telefon, degerler: WaSablonu.degerler(adSoyad: k.ad, benimAdim: ekip.calisan?.gorunenAd ?? "")) { m, id in
+                            WaTeyidi(talepId: k.id, talepKol: "armutTalepleri", telefon: k.telefon, ad: k.ad, metin: m, sablon: id)
+                        } etiket: {
+                            Label("WhatsApp", systemImage: "message.fill").font(.caption.weight(.semibold))
+                        }
+                    } else if let u = URL(string: "https://wa.me/\(k.telefon.filter(\.isNumber))") {
                         Link(destination: u) { Label("WhatsApp", systemImage: "message.fill").font(.caption.weight(.semibold)) }
                     }
                 }

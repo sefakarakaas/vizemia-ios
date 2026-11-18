@@ -74,6 +74,10 @@ struct EkipKok: View {
             }
         }
         .animation(Hareket.yay, value: ekip.kilitli)
+        // WhatsApp açıldıysa dönünce "Gönderdim / Göndermedim" sorulur; kapatılamaz.
+        .sheet(isPresented: Binding(get: { ekip.bekleyenWa != nil && !ekip.kilitli }, set: { _ in })) {
+            WaTeyitSayfasi()
+        }
     }
 
     private func yigin<Govde: View>(_ s: EkipSekme, @ViewBuilder _ govde: () -> Govde) -> some View {

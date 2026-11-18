@@ -99,3 +99,39 @@ final class VitrinArkaPlanTests: XCTestCase {
         XCTAssertFalse(FotoHavuzu.ulkeFotosuVar("japonya", havuz))
     }
 }
+
+final class MusteriMesajiTests: XCTestCase {
+    func testTelefon() {
+        XCTAssertEqual(MusteriMesaji.telefonE164("0532 123 45 67"), "+905321234567")
+        XCTAssertEqual(MusteriMesaji.telefonE164("5321234567"), "+905321234567")
+        XCTAssertEqual(MusteriMesaji.telefonE164("90 212 123 45 67"), "+902121234567")
+        XCTAssertEqual(MusteriMesaji.telefonE164("+49 151 2345678"), "+491512345678")
+        XCTAssertEqual(MusteriMesaji.telefonE164("0632 123 45 67"), "")
+        XCTAssertEqual(MusteriMesaji.telefonE164("12345"), "")
+    }
+
+    func testKanalDurumu() {
+        XCTAssertTrue(MusteriMesaji.kanalDurumu(.eposta, eposta: "a@b.co", telefon: "", smsHazir: false, smsIzni: false).olur)
+        XCTAssertEqual(MusteriMesaji.kanalDurumu(.sms, eposta: "", telefon: "05321234567", smsHazir: false, smsIzni: true).neden,
+                       "SMS altyapısı kurulmadı")
+        XCTAssertFalse(MusteriMesaji.kanalDurumu(.sms, eposta: "", telefon: "05321234567", smsHazir: true, smsIzni: false).olur)
+        XCTAssertEqual(MusteriMesaji.kanalDurumu(.whatsapp, eposta: "", telefon: "", smsHazir: true, smsIzni: true).neden,
+                       "Müşterinin telefon numarası yok ya da hatalı.")
+        XCTAssertEqual(MusteriMesaji.waBaglantisi(telefon: "0532 123 45 67", metin: " Merhaba Ayşe ")?.absoluteString,
+                       "https://wa.me/905321234567?text=Merhaba%20Ay%C5%9Fe")
+    }
+}
+
+final class WaSablonuTests: XCTestCase {
+    func testKimlikVeDoldurma() {
+        XCTAssertEqual(WaSablonu.kimlik(baslik: "Evrak Hatırlatma!", olanlar: []), "evrak-hatirlatma")
+        XCTAssertEqual(WaSablonu.kimlik(baslik: "Evrak hatırlatma", olanlar: ["evrak-hatirlatma"]), "evrak-hatirlatma-2")
+        XCTAssertEqual(WaSablonu.kimlik(baslik: "  ", olanlar: []), "sablon")
+        let d = WaSablonu.degerler(adSoyad: "Ayşe Nur Kaya", ulke: "İtalya", benimAdim: "Aleyna Yıldız")
+        XCTAssertEqual(WaSablonu.doldur(" Merhaba {ad}, {benim_ilk_adim} ben. {yok}{ulke} ", d), "Merhaba Ayşe, Aleyna ben. İtalya")
+        let l = WaSablonu.kaydet([WaSablonu(id: WaSablonu.geciciKimlik(), baslik: "Ulaşamadık", metin: "x")],
+                                 calisan: Calisan(uid: "u", belge: ["role": .metin("admin"), "active": .mantik(true)], izinBelgesi: nil))
+        guard case let .yaz(_, alanlar, _) = l[0] else { return XCTFail() }
+        XCTAssertEqual(alanlar["templates"]?.diziDegeri?.first?.haritaDegeri?["id"]?.metinDegeri, "ulasamadik")
+    }
+}

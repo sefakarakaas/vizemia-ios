@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import LocalAuthentication
+import UIKit
 import VizeMiaCekirdek
 
 /// Çalışan oturumu: panelin kullanıcı adı ve şifresiyle bir kez girilir,
@@ -69,6 +70,7 @@ final class EkipOturumu {
         if let o = AnahtarZinciri.oku(KimlikIstemci.Oturum.self, servis: EkipOturumu.servis, hesap: "oturum") {
             oturum = o
             calisan = AnahtarZinciri.oku(Calisan.self, servis: EkipOturumu.servis, hesap: "calisan")
+            if calisan != nil { bekleyenWa = AnahtarZinciri.oku(WaTeyidi.self, servis: EkipOturumu.servis, hesap: "waTeyidi") }
             durum = calisan == nil ? .aciliyor : .acik
             // Uygulama yeniden açıldı: kilitli başlar (Face ID).
             kilitli = calisan != nil
@@ -126,6 +128,10 @@ final class EkipOturumu {
         kilitli = false
         AnahtarZinciri.sil(servis: EkipOturumu.servis, hesap: "oturum")
         AnahtarZinciri.sil(servis: EkipOturumu.servis, hesap: "calisan")
+        // Başka bir çalışan girerse öncekinin sorusu ona sorulmasın.
+        bekleyenWa = nil
+        waSablonlari = nil
+        AnahtarZinciri.sil(servis: EkipOturumu.servis, hesap: "waTeyidi")
     }
 
     /// Geçerli belirteçle Firestore istemcisi (gerekirse yeniler).
@@ -237,6 +243,74 @@ final class EkipOturumu {
         guard let t = yayinAnahtari, !t.isEmpty else { return nil }
         guard let (_, cevap) = try? await URLSession.shared.data(for: SiteYayini.istek(anahtar: t)) else { return false }
         return (cevap as? HTTPURLResponse)?.statusCode == 204
+    }
+
+    // MARK: - WhatsApp teyidi ve hazır mesajlar
+
+    /// Cevabı beklenen WhatsApp açılışı (panel: wa-teyit.js). Uygulama WhatsApp'ın
+    /// gönderilip gönderilmediğini bilemez; danışmana sorar. Soru kapatılamaz ve
+    /// Anahtar Zinciri'nde tutulur: uygulama kapansa da sonraki açılışta yeniden sorulur.
+    private(set) var bekleyenWa: WaTeyidi?
+    /// Her teyit kaydında artar; mesaj geçmişini gösteren ekran yeniden okur.
+    private(set) var waTeyitSayaci = 0
+    /// settings/wa; ilk gerektiğinde bir kez okunur.
+    private(set) var waSablonlari: [WaSablonu]?
+
+    /// wa.me'yi açar ve teyit sorusunu bekletir. Numara geçersizse false.
+    func waAc(_ t: WaTeyidi) -> Bool {
+        guard let u = MusteriMesaji.waBaglantisi(telefon: t.telefon, metin: t.metin) else { return false }
+        bekleyenWa = t
+        AnahtarZinciri.yaz(t, servis: Self.servis, hesap: "waTeyidi")
+        UIApplication.shared.open(u)
+        return true
+    }
+
+    /// "Gönderdim" / "Göndermedim": mesajKaydi'na yazılır. Hata metni döner (nil: tamam);
+    /// yazılamazsa soru açık kalır, tekrar denenir.
+    func waTeyitKaydet(gonderildi: Bool) async -> String? {
+        guard let t = bekleyenWa, let c = calisan else { return "Oturum bulunamadı." }
+        if let y = MusteriMesaji.waTeyidi(t, gonderildi: gonderildi, calisan: c) {
+            #if DEBUG
+            let ornek = ProcessInfo.processInfo.arguments.contains("-ornek-ekip")
+            #else
+            let ornek = false
+            #endif
+            if !ornek {
+                do { try await istemci().isle(y) } catch {
+                    return HataAciklamasi.metin(error, "Kaydedilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.")
+                }
+            }
+        }
+        bekleyenWa = nil
+        AnahtarZinciri.sil(servis: Self.servis, hesap: "waTeyidi")
+        waTeyitSayaci += 1
+        return nil
+    }
+
+    func waSablonlariYukle() async {
+        guard waSablonlari == nil else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { waSablonlari = WaSablonu.liste(belge: nil); return }
+        #endif
+        let b: [String: FSDeger]? = (try? await istemci().belge("settings/wa")) ?? nil
+        waSablonlari = WaSablonu.liste(belge: b)
+    }
+
+    /// Hazır WhatsApp/SMS mesajlarını kaydeder (yönetici ve lead.manage). Hata metni ya da nil.
+    func waSablonlariKaydet(_ l: [WaSablonu]) async -> String? {
+        guard let c = calisan else { return "Oturum bulunamadı." }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-ornek-ekip") { waSablonlari = l; return nil }
+        #endif
+        do {
+            let f = try await istemci()
+            try await f.isle(WaSablonu.kaydet(l, calisan: c))
+            let b: [String: FSDeger]? = (try? await f.belge("settings/wa")) ?? nil
+            waSablonlari = WaSablonu.liste(belge: b)
+            return nil
+        } catch {
+            return HataAciklamasi.metin(error, "Kaydedilemedi. İnternet bağlantınızı kontrol edip tekrar deneyin.")
+        }
     }
 
     // MARK: - Face ID kilidi
