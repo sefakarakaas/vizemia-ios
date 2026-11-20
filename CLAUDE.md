@@ -13,7 +13,7 @@ vizemia.com'un iPhone uygulaması. Site deposu: `sefakarakaas/VizeMia` (panel, s
 ## "Beni unutma"
 
 - Durum: `App/Durum/TakipHafizasi.swift` (hatırlanan başvuru, son görülen durum), `Kasa.swift` (Anahtar Zinciri), `Bildirimler.swift` (izin, yerel bildirim, arka plan denetimi). Metinler ve değişiklik kuralı çekirdekte: `Selamlama`, `TakipKaydi.bildirim(onceki:)`.
-- Bildirim sunucudan gelmiyor (arka plan denetimi + yerel bildirim). Gerçek anlık bildirim (APNs) ayrı bir iş: Apple anahtarı, site deposunda gönderici ve cihaz kaydı kuralı gerekir.
+- Bildirim iki yoldan: arka plan denetimi + yerel bildirim (her zaman) ve sunucudan anlık bildirim (FCM). Anlık bildirim: `App/Durum/AnlikBildirimMerkezi.swift` (Firebase Messaging jetonu, cihazlar/ kaydı, dokununca açılacak ekran), çekirdekte `AnlikBildirim.swift`; gönderen site deposundaki `apps-script/Bildirim.gs` (kurulum: `apps-script/KURULUM.md` → 7). Firebase iOS uygulama kimliği GitHub değişkeni `FIREBASE_IOS_APP_ID`'den derlemeye girer; boşsa anlık bildirim kapalı, TestFlight bildirim yetkisi eklemez.
 - Ekran testinde örnek kayıt: uygulama `-ornek-takip` ile açılırsa (yalnız geliştirme derlemesi) ağa ve Anahtar Zinciri'ne dokunmadan hatırlanan müşteri hâlini gösterir.
 
 ## Ekip ekranları (panelin uygulama hâli)
