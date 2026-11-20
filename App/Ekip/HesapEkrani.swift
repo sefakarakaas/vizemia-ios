@@ -36,6 +36,10 @@ struct HesapEkrani: View {
                 Text("Uygulamayı müşterinin gördüğü hâliyle açar. Ekibe dönmek için Daha → Ekip görünümü.")
             }
             Section {
+                NavigationLink(value: EkipRota.bildirimTercihleri) { Label("Bildirimler", systemImage: "bell.badge.fill") }
+                NavigationLink(value: EkipRota.bildirimGonder(nil)) { Label("Bildirim gönder", systemImage: "paperplane.fill") }
+            }
+            Section {
                 NavigationLink(value: EkipRota.sifre) { Label("Şifremi değiştir", systemImage: "key.fill") }
                 if ekip.calisan?.yonetici == true {
                     NavigationLink(value: EkipRota.kullanicilar) { Label("Kullanıcılar", systemImage: "person.3.fill") }

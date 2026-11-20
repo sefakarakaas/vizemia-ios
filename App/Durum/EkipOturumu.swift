@@ -132,6 +132,8 @@ final class EkipOturumu {
         bekleyenWa = nil
         waSablonlari = nil
         AnahtarZinciri.sil(servis: EkipOturumu.servis, hesap: "waTeyidi")
+        // Çıkan çalışanın telefonuna artık ekip bildirimi gitmesin.
+        Task { await AnlikBildirimMerkezi.ortak.ekip(istemci: nil, calisan: nil) }
     }
 
     /// Geçerli belirteçle Firestore istemcisi (gerekirse yeniler).
@@ -192,6 +194,14 @@ final class EkipOturumu {
             let k = kasaBelgesi?["servisUrl"]?.metinDegeri?.trimmingCharacters(in: .whitespaces) ?? ""
             kasaServisUrl = k.range(of: "^https://script\\.google\\.com/macros/s/[\\w-]+/exec$", options: .regularExpression) != nil ? k : ""
             durum = .acik
+            // Anlık bildirim: bu telefon danışmanın konularıyla kaydolur (izin ilk girişte sorulur).
+            Task {
+                await AnlikBildirimMerkezi.ortak.izinIsteVeKaydol()
+                await AnlikBildirimMerkezi.ortak.ekip(istemci: { [weak self] in
+                    guard let self else { throw KimlikIstemci.Hata.oturumBitti }
+                    return try await self.istemci()
+                }, calisan: c)
+            }
             if let s = try? await f.sorgu(koleksiyon: "statuses", sinir: 100) {
                 statuler = s.map { Statu(kimlik: $0.kimlik, alanlar: $0.alanlar) }.sorted { $0.sira < $1.sira }
             }
@@ -227,6 +237,18 @@ final class EkipOturumu {
         i.timeoutInterval = 20
         i.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
         i.httpBody = try? JSONSerialization.data(withJSONObject: ["tur": "eposta"])
+        return (try? await URLSession.shared.data(for: i)) != nil
+    }
+
+    /// Elle bildirim istekleri hemen gönderilsin (Apps Script → Bildirim.gs). Servis
+    /// yoksa ya da ulaşılamazsa istek 10 dakikalık zamanlayıcıda gider.
+    func bildirimHemen() async -> Bool {
+        guard !kasaServisUrl.isEmpty, let u = URL(string: kasaServisUrl) else { return false }
+        var i = URLRequest(url: u)
+        i.httpMethod = "POST"
+        i.timeoutInterval = 20
+        i.setValue("text/plain;charset=utf-8", forHTTPHeaderField: "Content-Type")
+        i.httpBody = try? JSONSerialization.data(withJSONObject: ["tur": "bildirim"])
         return (try? await URLSession.shared.data(for: i)) != nil
     }
 

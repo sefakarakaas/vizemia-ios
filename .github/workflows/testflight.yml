@@ -65,6 +65,12 @@ jobs:
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
+      # Swift paketleri (Firebase) her seferinde baştan indirilmesin.
+      - name: Paket önbelleği
+        uses: actions/cache@v4
+        with:
+          path: build/spm
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
       # Arşiv imzasız alınır: imzalı arşiv geliştirme sertifikası ve hesaba
       # kayıtlı bir cihaz (iPhone'un UDID'si) ister; Mac'siz kurulumda kayıtlı
       # cihaz yok. İmzayı bir sonraki adımda dağıtım sertifikasıyla Apple'ın
@@ -76,10 +82,23 @@ jobs:
             -project VizeMia.xcodeproj -scheme VizeMia -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath build/VizeMia.xcarchive \
+            -clonedSourcePackagesDirPath build/spm \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            FIREBASE_IOS_APP_ID="${{ vars.FIREBASE_IOS_APP_ID }}" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" 2>&1 | tee arsiv.log | grep -E "error:|\*\* ARCHIVE" || true
           grep -q "\*\* ARCHIVE SUCCEEDED \*\*" arsiv.log
+      # Anlık bildirim yetkisi. Arşiv imzasız alındığı için yetki dosyası ikilide
+      # yok; Apple'ın bulut imzası yetkileri uygulamanın mevcut imzasından okur.
+      # Bu yüzden önce geçici (ad-hoc) imzayla eklenir. Yalnız Firebase kimliği
+      # verildiyse: kimlik Apple'da "Push Notifications" açıldıktan sonra eklenir
+      # (KURULUM: site deposu apps-script/KURULUM.md → 7), öncesinde yükleme bozulmaz.
+      - name: Anlık bildirim yetkisi
+        if: ${{ vars.FIREBASE_IOS_APP_ID != '' }}
+        run: |
+          app=build/VizeMia.xcarchive/Products/Applications/VizeMia.app
+          codesign --force --sign - --timestamp=none --entitlements Yapi/VizeMia.entitlements "$app"
+          codesign -d --entitlements - "$app" 2>/dev/null | grep -q aps-environment
       - name: App Store Connect'e yükle
         run: |
           set -o pipefail

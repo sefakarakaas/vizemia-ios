@@ -1184,6 +1184,58 @@ final class BasvuruEmulatorTests: XCTestCase {
         XCTFail("sıra 3 kabul edildi: \(r2.id)")
     }
 
+    func testAnlikBildirimKayitlari() async throws {
+        let ek = String(Int.random(in: 1000...9999))
+        let owner = e.istemci("owner")
+        let uid = try await e.hesapAc("ab\(ek)", "gizli-sifre-1")
+        try await owner.belgeYaz("employees/\(uid)", alanlar: [
+            "username": .metin("ab\(ek)"), "displayName": .metin("Ezgi"), "role": .metin("writer"), "active": .mantik(true)])
+        try await owner.belgeYaz("settings/permissions", alanlar: ["roles": .harita([
+            "writer": .dizi((Calisan.varsayilanIzinler["writer"]!.filter { $0 != "kasa.view" } + ["eposta.send"]).map { .metin($0) }),
+        ])])
+        let takipId = String(repeating: "c", count: 60) + ek
+        try await owner.belgeYaz("takip/\(takipId)", alanlar: ["firstName": .metin("Ayşe")])
+        let appId = "ab\(ek)"
+        try await owner.belgeYaz("applications/\(appId)", alanlar: ["firstName": .metin("Ayşe")])
+        let anonim = e.istemci(nil)
+        let jeton = "fcm-jeton-\(ek)-" + String(repeating: "z", count: 30)
+
+        // Müşteri girişsiz kaydolur; uydurma takip kimliğiyle olmaz; kendi kaydını siler.
+        try await anonim.isle([AnlikBildirim.musteriKaydi(jeton: jeton, takipId: takipId)])
+        let mk = AnlikBildirim.cihazKimligi(jeton: jeton, tur: "musteri")
+        let _m = try await owner.belge("cihazlar/\(mk)")
+        XCTAssertEqual(_m?["takipId"]?.metinDegeri, takipId)
+        do {
+            try await anonim.isle([AnlikBildirim.musteriKaydi(jeton: jeton + "x", takipId: String(repeating: "f", count: 64))])
+            XCTFail("uydurma takip kimliği kabul edildi")
+        } catch let h as FirestoreHatasi { XCTAssertEqual(h, .izinYok) }
+        try await anonim.isle([AnlikBildirim.kaydiSil(jeton: jeton, tur: "musteri")])
+        let _m2 = try await owner.belge("cihazlar/\(mk)")
+        XCTAssertNil(_m2)
+
+        // Danışman: izni olmayan konu (kasa) kaydedilmez.
+        let o = try await e.kimlik.giris(kullaniciAdi: "ab\(ek)", sifre: "gizli-sifre-1")
+        let ben = e.istemci(o.belirtec)
+        let _c = try await ben.belge("employees/\(uid)")
+        let c = Calisan(uid: uid, belge: try XCTUnwrap(_c), izinBelgesi: try await ben.belge("settings/permissions"))
+        XCTAssertFalse(BildirimKonusu.uygun(c).contains { $0.id == "kasa" })
+        try await ben.isle([AnlikBildirim.ekipKaydi(jeton: jeton, calisan: c, konular: ["talep", "kasa", "elle", "uydurma"])])
+        let _d = try await owner.belge("cihazlar/\(AnlikBildirim.cihazKimligi(jeton: jeton, tur: "ekip"))")
+        XCTAssertEqual(_d?["konular"]?.diziDegeri?.compactMap { $0.metinDegeri }, ["talep", "elle"])
+        XCTAssertEqual(_d?["uid"]?.metinDegeri, uid)
+
+        // Elle istek: müşteriye (eposta.send) ve çalışana.
+        try await ben.isle(try XCTUnwrap(AnlikBildirim.istek(hedefTur: .musteri, hedef: appId, hedefAd: "Ayşe", baslik: "Evrak",
+                                                             metin: "Pasaportunuzu getirin", calisan: c)))
+        try await ben.isle(try XCTUnwrap(AnlikBildirim.istek(hedefTur: .ekip, hedef: uid, hedefAd: "Ezgi", baslik: "Not", metin: "Ara", calisan: c)))
+        XCTAssertNil(AnlikBildirim.istek(hedefTur: .ekip, hedef: uid, hedefAd: "", baslik: " ", metin: "x", calisan: c))
+        let l = try await ben.sorgu(koleksiyon: "bildirimIstekleri", kosullar: [.esit("createdBy", .metin(uid))], sinir: 10)
+        XCTAssertEqual(l.count, 2)
+        XCTAssertEqual(AnlikBildirim.Hedef("talep:callback/abc"), .talep("callback/abc"))
+        XCTAssertEqual(AnlikBildirim.Hedef("basvuru:x1"), .basvuru("x1"))
+        XCTAssertEqual(AnlikBildirim.Hedef("talep:uydurma/x"), .yok)
+    }
+
     func testEposta() async throws {
         let ek = String(Int.random(in: 1000...9999))
         let owner = e.istemci("owner")

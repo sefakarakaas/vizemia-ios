@@ -27,6 +27,9 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<!-- Anlık bildirim: Firebase iOS uygulama kimliği (derleme ayarından). -->
+	<key>VizeMiaFirebaseAppID</key>
+	<string>$(FIREBASE_IOS_APP_ID)</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.vizemia.app.takip-yenile</string>

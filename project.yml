@@ -19,6 +19,11 @@ settings:
 packages:
   VizeMiaCekirdek:
     path: Cekirdek
+  # Anlık bildirim jetonu (Firebase Cloud Messaging). Yalnız Messaging ürünü
+  # kullanılır; analitik yok.
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: 11.6.0
 
 targets:
   VizeMia:
@@ -28,9 +33,15 @@ targets:
       - path: App
     dependencies:
       - package: VizeMiaCekirdek
+      - package: Firebase
+        product: FirebaseMessaging
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vizemia.app
+        # Firebase'e kayıtlı iOS uygulamasının kimliği (gizli değil). GitHub →
+        # Variables → FIREBASE_IOS_APP_ID'den derlemeye verilir; boşsa anlık
+        # bildirim kapalı kalır, uygulamanın geri kalanı etkilenmez.
+        FIREBASE_IOS_APP_ID: ""
         PRODUCT_NAME: VizeMia
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

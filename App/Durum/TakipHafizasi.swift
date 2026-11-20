@@ -45,7 +45,12 @@ final class TakipHafizasi {
         silinmis = false
         yeniVar = false
         sonYenileme = Date()
-        if !ornek { Kasa.yaz(k) }
+        if !ornek {
+            Kasa.yaz(k)
+            // Anlık bildirim: statü değişince sunucudan da haber gelsin.
+            let takipId = Takip.kimlik(kod: kod, pasaport: pasaport)
+            Task { await AnlikBildirimMerkezi.ortak.musteri(takipId: takipId) }
+        }
     }
 
     /// Kayıtlı bilgiyi siler; bildirim de gelmez.
@@ -53,7 +58,10 @@ final class TakipHafizasi {
         kayit = nil
         silinmis = false
         yeniVar = false
-        if !ornek { Kasa.sil() }
+        if !ornek {
+            Kasa.sil()
+            Task { await AnlikBildirimMerkezi.ortak.musteri(takipId: nil) }
+        }
         Bildirimler.planiIptalEt()
         Bildirimler.rozetiSil()
     }

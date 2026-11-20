@@ -49,6 +49,12 @@ jobs:
         run: |
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           xcodegen generate
+      # Swift paketleri (Firebase) her seferinde baştan indirilmesin.
+      - name: Paket önbelleği
+        uses: actions/cache@v4
+        with:
+          path: build/spm
+          key: spm-${{ runner.os }}-${{ hashFiles('project.yml') }}
       - name: Derle (iPhone simülatörü)
         run: |
           set -o pipefail
@@ -56,6 +62,7 @@ jobs:
             -project VizeMia.xcodeproj -scheme VizeMia -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/derived \
+            -clonedSourcePackagesDirPath build/spm \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild.log | grep -E "error:|warning: .*(deprecated|never used|nearly matches)|\*\* BUILD" || true
           grep -q "\*\* BUILD SUCCEEDED \*\*" xcodebuild.log
           # "nearly matches": temsilci yöntemi imzası tutmuyor, yöntem hiç çağrılmaz.

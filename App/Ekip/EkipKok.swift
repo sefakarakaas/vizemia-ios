@@ -17,6 +17,8 @@ enum EkipRota: Hashable {
     case arsiv
     case arsivdenBasvuru(String)    // arşiv kaydının kimliği: yeni başvuru formu onunla dolu
     case rehber                     // görüşme rehberi
+    case bildirimTercihleri         // anlık bildirim konuları (bu telefon)
+    case bildirimGonder(String?)    // elle bildirim; başvuru kimliği verilirse o müşteriye
     case mektup(String)             // başvurunun iyi niyet mektubu
     case topluEposta
     case grubaEkle(String)          // ilk kişinin başvurusu: yeni başvuru ortak yolculuk bilgileriyle dolu
@@ -78,10 +80,31 @@ struct EkipKok: View {
             }
         }
         .animation(Hareket.yay, value: ekip.kilitli)
+        // Anlık bildirime dokunuldu: ilgili ekran Ana Sayfa yığınına açılır.
+        .onChange(of: AnlikBildirimMerkezi.ortak.bekleyenHedef) { _, yeni in hedefiAc(yeni) }
+        .onAppear { hedefiAc(AnlikBildirimMerkezi.ortak.bekleyenHedef) }
         // WhatsApp açıldıysa dönünce "Gönderdim / Göndermedim" sorulur; kapatılamaz.
         .sheet(isPresented: Binding(get: { ekip.bekleyenWa != nil && !ekip.kilitli }, set: { _ in })) {
             WaTeyitSayfasi()
         }
+    }
+
+    private func hedefiAc(_ h: AnlikBildirim.Hedef?) {
+        guard let h else { return }
+        AnlikBildirimMerkezi.ortak.bekleyenHedef = nil
+        let rota: EkipRota?
+        switch h {
+        case .basvuru(let id): rota = .basvuru(id)
+        case .talep(let yol): rota = .talep(yol)
+        case .destek(let id): rota = .destek(id)
+        case .kasa: rota = .kasa
+        case .bildirimler: rota = .bildirimler
+        case .armut: rota = .armut
+        case .takip, .yok: rota = nil
+        }
+        guard let r = rota else { return }
+        sekme = .ana
+        yollar[.ana, default: []].append(r)
     }
 
     private func yigin<Govde: View>(_ s: EkipSekme, @ViewBuilder _ govde: () -> Govde) -> some View {
@@ -101,6 +124,8 @@ struct EkipKok: View {
                     case .arsiv: ArsivEkrani()
                     case .arsivdenBasvuru(let id): BasvuruFormuEkrani(kimlik: nil, talepYolu: nil, arsivId: id)
                     case .rehber: GorusmeRehberiEkrani()
+                    case .bildirimTercihleri: BildirimTercihleriEkrani()
+                    case .bildirimGonder(let id): BildirimGonderEkrani(basvuruId: id)
                     case .mektup(let id): MektupEkrani(basvuruId: id)
                     case .topluEposta: TopluEpostaEkrani()
                     case .grubaEkle(let id): BasvuruFormuEkrani(kimlik: nil, talepYolu: nil, grupKaynak: id)

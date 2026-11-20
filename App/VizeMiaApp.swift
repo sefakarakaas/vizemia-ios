@@ -4,6 +4,8 @@ import VizeMiaCekirdek
 
 @main
 struct VizeMiaApp: App {
+    // Anlık bildirim: Firebase açılışta başlar, APNs jetonu buradan gelir.
+    @UIApplicationDelegateAdaptor(UygulamaTemsilcisi.self) private var uygulamaTemsilcisi
     @State private var icerik = IcerikDeposu()
     @State private var gezinti = Gezinti()
     @State private var hafiza = TakipHafizasi()
@@ -29,8 +31,22 @@ struct VizeMiaApp: App {
                 .preferredColorScheme(.light)
                 .tint(Tema.lacivert)
                 .task {
-                    // Aşama bildirimine dokunan müşteri doğrudan sürecini görür.
-                    Bildirimler.temsilci.dokunuldu = { gezinti.ac(.takip(kod: "")) }
+                    // Aşama bildirimine dokunan müşteri doğrudan sürecini görür; danışmana
+                    // gelen anlık bildirim ilgili ekip ekranını açar (EkipKok işler).
+                    Bildirimler.temsilci.dokunuldu = { hedef, sunucudan in
+                        let h = AnlikBildirim.Hedef(hedef)
+                        switch h {
+                        case .takip: gezinti.ac(.takip(kod: ""))
+                        case .yok: if !sunucudan { gezinti.ac(.takip(kod: "")) }
+                        default:
+                            if ekip.girisli { ekip.ekipGorunumu = true }
+                            AnlikBildirimMerkezi.ortak.bekleyenHedef = h
+                        }
+                    }
+                    // Hatırlanan başvuru varsa telefon müşteri olarak da kayıtlı kalsın (jeton değişebilir).
+                    if let k = hafiza.kayit {
+                        await AnlikBildirimMerkezi.ortak.musteri(takipId: Takip.kimlik(kod: k.kod, pasaport: k.pasaport))
+                    }
                     await icerik.yenile()
                     await hafiza.yenile()
                 }

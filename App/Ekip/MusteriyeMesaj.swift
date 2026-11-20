@@ -64,6 +64,13 @@ struct MusteriyeMesajKarti: View {
             HStack {
                 Text("Müşteriye mesaj").font(.headline).foregroundStyle(Tema.lacivert)
                 Spacer()
+                if yazabilir {
+                    NavigationLink(value: EkipRota.bildirimGonder(b.kimlik)) {
+                        Image(systemName: "bell.badge")
+                    }
+                    .buttonStyle(KucukDugme())
+                    .accessibilityLabel("Uygulama bildirimi gönder")
+                }
                 if yazabilir && !yaziyor {
                     Button {
                         if let ilk = MesajKanali.allCases.first(where: { durum($0).olur }) { kanal = ilk }

@@ -77,15 +77,20 @@ enum Bildirimler {
 
 /// Bildirime dokunulunca Takip sekmesini açar; uygulama açıkken gelen bildirimi de gösterir.
 final class BildirimTemsilcisi: NSObject, UNUserNotificationCenterDelegate {
-    var dokunuldu: (@MainActor () -> Void)?
+    /// Dokunulan bildirimin hedefi ("basvuru:x", "takip"…) ve sunucudan mı geldiği
+    /// (anlık bildirimde "konu" var; telefonun kendi ürettiği durum bildiriminde yok).
+    var dokunuldu: (@MainActor (_ hedef: String?, _ sunucudan: Bool) -> Void)?
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        let bilgi = response.notification.request.content.userInfo
+        let hedef = bilgi["hedef"] as? String
+        let sunucudan = bilgi["konu"] != nil
         Task { @MainActor in
-            self.dokunuldu?()
+            self.dokunuldu?(hedef, sunucudan)
             completionHandler()
         }
     }
